@@ -146,7 +146,7 @@ def order_shaping(order_data, truck_data):
         unit_cost_list.append(unit_cost)
         wfr_list.append(wfr)
         vfr_list.append(vfr)
-    
+
     return filler_qty_total, filler_qty_list, truck_qty_total, truck_qty_list, unit_cost_list, wfr_list, vfr_list
 
 
@@ -160,21 +160,28 @@ if uploaded_file is not None:
     material = np.array(order_data[order_data["订单类型"] != "客运"]["Material"])
 
     truck_type = np.array(truck_data["车型"])
-    
+    truck_capacity_weight = np.array(truck_data["载重"])
+    truck_capacity_volume = np.array(truck_data["容积"])
+    truck_cost = np.array(truck_data["Cost"])
+
     filler_qty_total, filler_qty_list, truck_qty_total, truck_qty_list, unit_cost_list, wfr_list, vfr_list = \
         order_shaping(order_data, truck_data)
-    
+
     st.write("The overall order shaping and truck planning result is as below: ")
     order_shaping_result = pd.DataFrame(
         {"Destination": destination, "Material": material, "Filler CS #": filler_qty_total})
-    truck_planning_result = pd.DataFrame({"Truck Type": truck_type, "Truck #": truck_qty_total})
+    truck_planning_result = pd.DataFrame({"Truck Type": truck_type, "Truck Capacity_Weight": truck_capacity_weight,
+                                          "Truck Capacity_Volume": truck_capacity_volume, "Truck Cost": truck_cost,
+                                          "Truck #": truck_qty_total})
     st.write(order_shaping_result)
     st.write(truck_planning_result)
     for i in range(customer_order_num):
         st.write("For customer order in date ", customer_order_date_list[i], ", the order shaping and truck planning result is as below: ")
         order_shaping_result = pd.DataFrame(
             {"Destination": destination, "Material": material, "Filler CS #": filler_qty_list[i]})
-        truck_planning_result = pd.DataFrame({"Truck Type": truck_type, "Truck #": truck_qty_list[i]})
+        truck_planning_result = pd.DataFrame({"Truck Type": truck_type, "Truck Capacity_Weight": truck_capacity_weight,
+                                              "Truck Capacity_Volume": truck_capacity_volume, "Truck Cost": truck_cost,
+                                              "Truck #": truck_qty_list[i]})
         st.write(order_shaping_result)
         st.write(truck_planning_result)
         st.write("Cost/PT: ", unit_cost_list[i])
