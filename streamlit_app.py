@@ -119,9 +119,10 @@ def order_shaping(order_data, truck_data):
 
 
 # Calculation Execution
-order_shaping_result, truck_planning_result, unit_cost, wfr, vfr = order_shaping(order_data, truck_data)
-st.write(order_shaping_result)
-st.write(truck_planning_result)
-st.write("Cost/PT: ", unit_cost)
-st.write("WFR: ", wfr)
-st.write("VFR: ", vfr)
+if uploaded_file is not None:
+    order_shaping_result, truck_planning_result, unit_cost, wfr, vfr = order_shaping(order_data, truck_data)
+    st.write(order_shaping_result)
+    st.write(truck_planning_result)
+    st.write("Cost/PT: ", unit_cost)
+    st.write("WFR: ", wfr)
+    st.write("VFR: ", vfr)
