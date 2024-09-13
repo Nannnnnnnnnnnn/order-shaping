@@ -151,8 +151,8 @@ def order_shaping(order_data, truck_data):
 # Calculation Execution
 if uploaded_file is not None:
     customer_order_num = len(order_data[order_data["订单类型"] == "客运"]["Weight (Ton)"])
-    order_data["客户要求到货日"] = order_data["客户要求到货日"].astype("datetime64[ns]")
-    customer_order_date_list = np.array(order_data[order_data["订单类型"] == "客运"]["客户要求到货日"])
+    order_data["客户要求到货日"] = pd.to_datetime(order_data["客户要求到货日"], format="%Y-%m-%d")
+    customer_order_date_list = np.array(order_data[order_data["订单类型"] == "客运"]["客户要求到货日"].astype(str))
 
     destination = np.array(order_data[order_data["订单类型"] != "客运"]["Destination Location ID"])
     material = np.array(order_data[order_data["订单类型"] != "客运"]["Material"])
