@@ -171,8 +171,11 @@ if uploaded_file is not None:
     truck_planning_result = pd.DataFrame({"Truck Type": truck_type, "Truck Capacity_Weight": truck_capacity_weight,
                                           "Truck Capacity_Volume": truck_capacity_volume, "Truck Cost": truck_cost,
                                           "Truck #": truck_qty_total})
-    st.write(order_shaping_result)
-    st.write(truck_planning_result)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write(order_shaping_result)
+    with col2:
+        st.write(truck_planning_result)
     for i in range(customer_order_num):
         st.write("For customer order in date ", customer_order_date_list[i], ", the order shaping and truck planning result is as below: ")
         order_shaping_result = pd.DataFrame(
@@ -180,8 +183,11 @@ if uploaded_file is not None:
         truck_planning_result = pd.DataFrame({"Truck Type": truck_type, "Truck Capacity_Weight": truck_capacity_weight,
                                               "Truck Capacity_Volume": truck_capacity_volume, "Truck Cost": truck_cost,
                                               "Truck #": truck_qty_list[i]})
-        st.write(order_shaping_result)
-        st.write(truck_planning_result)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(order_shaping_result)
+        with col2:
+            st.write(truck_planning_result)
         st.write("Cost/PT: ", unit_cost_list[i])
         st.write("WFR: ", wfr_list[i])
         st.write("VFR: ", vfr_list[i])
