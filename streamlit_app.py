@@ -152,7 +152,7 @@ def order_shaping(order_data, truck_data):
 if uploaded_file is not None:
     customer_order_num = len(order_data[order_data["订单类型"] == "客运"]["Weight (Ton)"])
     order_data["客户要求到货日"] = order_data["客户要求到货日"].astype("datetime64[ns]")
-    order_data["客户要求到货日"] = pd.to_datetime(order_data["客户要求到货日"], format="%Y-%m-%d", errors="coerce")
+    order_data["客户要求到货日"] = pd.to_datetime(order_data["客户要求到货日"], format="%Y-%m-%d", errors="ignore")
     customer_order_date_list = np.array(order_data[order_data["订单类型"] == "客运"]["客户要求到货日"].astype(str))
 
     destination = np.array(order_data[order_data["订单类型"] != "客运"]["Destination Location ID"])
