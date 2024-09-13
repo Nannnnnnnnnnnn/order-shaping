@@ -108,11 +108,9 @@ def order_shaping(order_data, truck_data):
     customer_order_weight = order_data[order_data["订单类型"] == "客运"]["Weight (Ton)"]
     customer_order_volume = order_data[order_data["订单类型"] == "客运"]["Volume (CU. M)"]
 
-    intersite_order_weight = np.array(order_data[order_data["订单类型"] != "客运"]["Weight (Ton)"])
-    intersite_order_volume = np.array(order_data[order_data["订单类型"] != "客运"]["Volume (CU. M)"])
+    intersite_order_unit_weight = np.array(order_data[order_data["订单类型"] != "客运"]["Weight (Ton)/CS"])
+    intersite_order_unit_volume = np.array(order_data[order_data["订单类型"] != "客运"]["Volume (CU. M)/CS"])
     max_qty = np.array(order_data[order_data["订单类型"] != "客运"]["Max Quantity"])
-    intersite_order_unit_weight = [weight / qty for weight, qty in zip(intersite_order_weight, max_qty)]
-    intersite_order_unit_volume = [volume / qty for volume, qty in zip(intersite_order_volume, max_qty)]
 
     priority_param = np.array(order_data[order_data["订单类型"] != "客运"]["优先级"])
 
