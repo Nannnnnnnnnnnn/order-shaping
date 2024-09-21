@@ -2,193 +2,172 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import gurobipy as grb
+from st_aggrid import AgGrid, ColumnsAutoSizeMode
 
-
-# Page and Title
-st.set_page_config(layout="wide")
+# Page Settings
+st.set_page_config(
+    page_title="Order Shaping Tool",
+    page_icon=":milky_way:",
+    layout="wide",
+    menu_items={
+        # 'Get Help': 'https://www.extremelycoolapp.com/help',
+        'Report a bug': "mailto:wang.n.22@pg.com",
+        'About': """Developer: Wang Nan
+                    \n Email: wang.n.22@pg.com"""
+    }
+)
 st.title("Order Shaping Tool")
+st.caption("Feel free to contact developer _Wang Nan_ if you have any question: wang.n.22@pg.com")
+st.divider()
 
 
 # File Uploading
 uploaded_file = st.file_uploader(label="Please upload the order and truck type data file:", type="xlsx")
 if uploaded_file is not None:
-    order_data = pd.read_excel(uploaded_file, sheet_name="订单汇总(中转VL06)",
-                               dtype={"订单": str, "Destination Location ID": str, "Material": str, "category_en": str})
-    truck_data = pd.read_excel(uploaded_file, sheet_name="车型数据")
+    order_data = pd.read_excel(uploaded_file, sheet_name="Consolidated Input",
+                               dtype={"Ship to": str, "配送中心名称": str, "品类名称": str, "商品名称": str, "宝洁八位码": str,
+                                      "宝洁DC": str, "Sales Unit": str,
+                                      "Min到货（箱数）": str, "Max到货（箱数）": str, "Final CS": str},
+                               parse_dates=["预约到货时间"])
+    truck_data = pd.read_excel(uploaded_file, dtype={"车型": str}, sheet_name="车型数据")
 
 
-# Calculation Function
-def model_execution(customer_order_weight, customer_order_volume, intersite_order_unit_weight,
-                    intersite_order_unit_volume, max_qty, priority_param, truck_capacity_weight, truck_capacity_volume,
-                    truck_cost):
-    # Construct Model Object
-    model = grb.Model("VMI_Order")
-
-    # Parameters
-    M = 100000
-
-    max_pt = max(customer_order_weight + sum(np.multiply(intersite_order_unit_weight, max_qty)),
-                 (customer_order_volume + sum(np.multiply(intersite_order_unit_volume, max_qty))) / 3)
-    min_pt = max(customer_order_weight, customer_order_volume / 3)
-
-    # Introduce Decision Variables & Parameters
-    n = len(intersite_order_unit_weight)
-    m = len(truck_capacity_weight)
-    l = n * 2 + m * 2 + 2
-    p = model.addVar(lb=1 / max_pt, ub=1 / min_pt, vtype=grb.GRB.CONTINUOUS, name="p")
-    q = [[] for i in range(l)]
-    for i in range(l):
-        if i in range(n):
-            q[i] = model.addVar(lb=0, ub=max_qty[i] / min_pt, vtype=grb.GRB.CONTINUOUS, name="q_" + str(i))
-        elif i in range(n, n + m):
-            q[i] = model.addVar(lb=0, ub=float("inf"), vtype=grb.GRB.CONTINUOUS, name="q_" + str(i))
-        elif i in range(n + m, n * 2 + m):
-            q[i] = model.addVar(lb=0, ub=max_qty[i - n - m], vtype=grb.GRB.INTEGER, name="q_" + str(i))
-        elif i in range(n * 2 + m, n * 2 + m * 2):
-            q[i] = model.addVar(lb=0, ub=float("inf"), vtype=grb.GRB.INTEGER, name="q_" + str(i))
-        else:
-            q[i] = model.addVar(vtype=grb.GRB.BINARY, name="q_" + str(i))
-
-    # Objective Function
-    cost_per_pt = grb.LinExpr(truck_cost, q[n:(n + m)])
-    priority = grb.LinExpr(priority_param, q[:n])
-    model.setObjectiveN(cost_per_pt, index=0, priority=10, weight=1, name="Cost/PT")
-    model.setObjectiveN(priority, index=4, priority=0, name="Priority")
-
-    # Constraints
-    model.addConstr(grb.LinExpr(intersite_order_unit_weight, q[:n]) + customer_order_weight * p <=
-                    grb.LinExpr(truck_capacity_weight, q[n:(n + m)]), "Capacity Constraint")
-    model.addConstr(grb.LinExpr(intersite_order_unit_volume, q[:n]) + customer_order_volume * p <=
-                    grb.LinExpr(truck_capacity_volume, q[n:(n + m)]), "Capacity Constraint")
-    model.addConstr(grb.LinExpr(intersite_order_unit_weight, q[:n]) + customer_order_weight * p >=
-                    1 - M * (1 - q[n * 2 + m * 2]), "PT Constraint")
-    model.addConstr((grb.LinExpr(intersite_order_unit_volume, q[:n]) + customer_order_volume * p) / 3 >=
-                    1 - M * (1 - q[n * 2 + m * 2 + 1]), "PT Constraint")
-    model.addConstr(q[n * 2 + m * 2] + q[n * 2 + m * 2 + 1] >= 1, "PT Constraint")
-    for i in range(n):
-        model.addQConstr(q[i] - p * q[n + m + i] == 0, "Integer Constraint")
-    for i in range(m):
-        model.addQConstr(q[n + i] - p * q[n * 2 + m + i] == 0, "Integer Constraint")
-
-    # Solve the Constructed Model
-    model.optimize()
-    for var in model.getVars():
-        if model.status == grb.GRB.OPTIMAL:
-            print(var.varName, "\t", var.x)
-
-    total_capacity_weight = 0
-    total_capacity_volume = 0
-    truck_loading_weight = customer_order_weight
-    truck_loading_volume = customer_order_volume
-    filler_qty = []
-    truck_qty = []
-
-    for var in model.getVars():
-        if model.status == grb.GRB.OPTIMAL:
-            if var.index == 0:
-                p_value = var.x
-            if var.index in range(1, n + 1):
-                filler_qty.append(var.x / p_value)
-                truck_loading_weight += var.x / p_value * intersite_order_unit_weight[var.index - 1]
-                truck_loading_volume += var.x / p_value * intersite_order_unit_volume[var.index - 1]
-            elif var.index in range(n + 1, n + m + 1):
-                truck_qty.append(var.x / p_value)
-                total_capacity_weight += var.x / p_value * truck_capacity_weight[var.index - n - 1]
-                total_capacity_volume += var.x / p_value * truck_capacity_volume[var.index - n - 1]
-    model.setParam(grb.GRB.Param.ObjNumber, 0)
-    unit_cost = model.objNVal
-    wfr = truck_loading_weight / total_capacity_weight
-    vfr = truck_loading_volume / total_capacity_volume
-
-    return filler_qty, truck_qty, unit_cost, wfr, vfr
-
-
-def order_shaping(order_data, truck_data):
-    # Parameters
-    customer_order_weight = order_data[order_data["订单类型"] == "客运"]["Weight (Ton)"]
-    customer_order_volume = order_data[order_data["订单类型"] == "客运"]["Volume (CU. M)"]
-
-    intersite_order_unit_weight = np.array(order_data[order_data["订单类型"] != "客运"]["Weight (Ton)/CS"])
-    intersite_order_unit_volume = np.array(order_data[order_data["订单类型"] != "客运"]["Volume (CU. M)/CS"])
-    max_qty = np.array(order_data[order_data["订单类型"] != "客运"]["Max Quantity"])
-
-    priority_param = np.array(order_data[order_data["订单类型"] != "客运"]["优先级"])
-
-    truck_capacity_weight = np.array(truck_data["载重"])
-    truck_capacity_volume = np.array(truck_data["容积"])
-    truck_cost = np.array(truck_data["Cost"])
-
-    # Calculate
-    filler_qty_total = []
-    truck_qty_total = []
-    filler_qty_list = []
-    truck_qty_list = []
-    unit_cost_list = []
-    wfr_list = []
-    vfr_list = []
-    for i in range(len(customer_order_weight)):
-        filler_qty, truck_qty, unit_cost, wfr, vfr = model_execution(customer_order_weight[i], customer_order_volume[i],
-                                                                     intersite_order_unit_weight,
-                                                                     intersite_order_unit_volume, max_qty,
-                                                                     priority_param, truck_capacity_weight,
-                                                                     truck_capacity_volume, truck_cost)
-        max_qty = [qty_1 - qty_2 for qty_1, qty_2 in zip(max_qty, filler_qty)]
-        if i == 0:
-            filler_qty_total = filler_qty
-            truck_qty_total = truck_qty
-        else:
-            filler_qty_total = [qty_1 + qty_2 for qty_1, qty_2 in zip(filler_qty_total, filler_qty)]
-            truck_qty_total = [qty_1 + qty_2 for qty_1, qty_2 in zip(truck_qty_total, truck_qty)]
-        filler_qty_list.append(filler_qty)
-        truck_qty_list.append(truck_qty)
-        unit_cost_list.append(unit_cost)
-        wfr_list.append(wfr)
-        vfr_list.append(vfr)
-
-    return filler_qty_total, filler_qty_list, truck_qty_total, truck_qty_list, unit_cost_list, wfr_list, vfr_list
-
-
-# Calculation Execution
+# Display Result
 if uploaded_file is not None:
-    customer_order_num = len(order_data[order_data["订单类型"] == "客运"]["Weight (Ton)"])
-    order_data["客户要求到货日"] = order_data["客户要求到货日"].astype("datetime64[ns]")
-    order_data["客户要求到货日"] = pd.to_datetime(order_data["客户要求到货日"], format="%Y-%m-%d", errors="ignore")
-    customer_order_date_list = np.array(order_data[order_data["订单类型"] == "客运"]["客户要求到货日"].astype(str))
-
-    destination = np.array(order_data[order_data["订单类型"] != "客运"]["Destination Location ID"])
-    material = np.array(order_data[order_data["订单类型"] != "客运"]["Material"])
-
-    truck_type = np.array(truck_data["车型"])
-    truck_capacity_weight = np.array(truck_data["载重"])
-    truck_capacity_volume = np.array(truck_data["容积"])
-    truck_cost = np.array(truck_data["Cost"])
-
-    filler_qty_total, filler_qty_list, truck_qty_total, truck_qty_list, unit_cost_list, wfr_list, vfr_list = \
-        order_shaping(order_data, truck_data)
-
-    st.write("The overall order shaping and truck planning result is as below: ")
-    order_shaping_result = pd.DataFrame(
-        {"Destination": destination, "Material": material, "Filler CS #": filler_qty_total})
-    truck_planning_result = pd.DataFrame({"Truck Type": truck_type, "Truck Capacity_Weight": truck_capacity_weight,
-                                          "Truck Capacity_Volume": truck_capacity_volume, "Truck Cost": truck_cost,
-                                          "Truck #": truck_qty_total})
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write(order_shaping_result)
-    with col2:
-        st.write(truck_planning_result)
-    for i in range(customer_order_num):
-        st.write("For customer order in date ", customer_order_date_list[i], ", the order shaping and truck planning result is as below: ")
-        order_shaping_result = pd.DataFrame(
-            {"Destination": destination, "Material": material, "Filler CS #": filler_qty_list[i]})
-        truck_planning_result = pd.DataFrame({"Truck Type": truck_type, "Truck Capacity_Weight": truck_capacity_weight,
-                                              "Truck Capacity_Volume": truck_capacity_volume, "Truck Cost": truck_cost,
-                                              "Truck #": truck_qty_list[i]})
+    st.info("Basic Info")
+    with st.container(border=True):
         col1, col2 = st.columns(2)
         with col1:
-            st.write(order_shaping_result)
+            st.markdown("Ship-to")
+            st.markdown("Customer")
+            st.markdown("Size of Prize (RMB)")
+            st.markdown("Quantity Changed (CS)")
         with col2:
-            st.write(truck_planning_result)
-        st.write("Cost/PT: ", unit_cost_list[i])
-        st.write("WFR: ", wfr_list[i])
-        st.write("VFR: ", vfr_list[i])
+            st.markdown("2002921387")
+            st.markdown("北京京东世纪贸易有限公司")
+            st.markdown("679")
+            st.markdown("431")
+
+    result = pd.DataFrame(
+        {
+            "Index": ["Unit Cost (RMB/PT)", "Loss (RMB)", "Truck Type", "VFR", "WFR", "Heavy/Light Mix(CBM/Ton)", "Quantity (CS)", "SLOG Impact"],
+            "Before Shaping": ["90.1", "-971", "12.5*1+9.6GL*1+9.6*1", "74%", "93%", "2.5", "8710", "2.3%"],
+            "After Shaping": ["78", "-292", "9.6GL*3", "87%", "93%", "2.5", "9141", "2.3%"],
+            "Ideal State": ["72.8", "0", "9.6GL", "91%", "100%", "2.6", "N/A", "N/A"]
+        }
+    )
+
+    result_grid_options = {
+        "columnDefs": [
+            {
+                "headerName": "Index",
+                "field": "Index",
+                "cellStyle": {
+                    "text-align": "center",
+                    "fontWeight": "bold"
+                },
+                "sortable": False,
+                "pinned": "left"
+            },
+            {
+                "headerName": "Before Shaping",
+                "field": "Before Shaping",
+                "cellStyle": {
+                    "text-align": "center"
+                },
+                "sortable": False
+            },
+            {
+                "headerName": "After Shaping",
+                "field": "After Shaping",
+                "cellStyle": {
+                    "text-align": "center"
+                },
+                "sortable": False
+            },
+            {
+                "headerName": "Ideal State",
+                "field": "Ideal State",
+                "cellStyle": {
+                    "text-align": "center"
+                },
+                "sortable": False
+            }
+        ]
+    }
+
+    custom_css = {
+        ".ag-header-cell-label": {
+            "justify-content": "center"
+        }
+    }
+
+    st.info("Overall Result")
+    AgGrid(
+        result,
+        gridOptions=result_grid_options,
+        columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
+        fit_columns_on_grid_load=True,
+        theme="alpine",
+        custom_css=custom_css
+    )
+
+    filler = pd.DataFrame(
+        {
+            "Category": order_data["品类名称"],
+            "SKU Number": order_data["宝洁八位码"],
+            "SKU Quantity Limit (-MIN CS, +MAX CS)": ["(-" + min_str + ", +" + max_str + ")" for min_str, max_str in zip(np.array(order_data["Min到货（箱数）"]), np.array(order_data["Max到货（箱数）"]))],
+            "Reco Quantity (CS)": ["+" + cs_str for cs_str in order_data["Final CS"]]
+        }
+    )
+
+    filler_grid_options = {
+        "columnDefs": [
+            {
+                "headerName": "Category",
+                "field": "Category",
+                "filter": "agTextColumnFilter",
+                # "suppressSizeToFit": True,
+                "cellStyle": {
+                    "text-align": "center"
+                }
+            },
+            {
+                "headerName": "SKU Number",
+                "field": "SKU Number",
+                "filter": "agTextColumnFilter",
+                # "suppressSizeToFit": True,
+                "cellStyle": {
+                    "text-align": "center"
+                }
+            },
+            {
+                "headerName": "SKU Quantity Limit (-MIN CS, +MAX CS)",
+                "field": "SKU Quantity Limit (-MIN CS, +MAX CS)",
+                "filter": "agTextColumnFilter",
+                # "suppressSizeToFit": True,
+                "cellStyle": {
+                    "text-align": "center"
+                }
+            },
+            {
+                "headerName": "Reco Quantity (CS)",
+                "field": "Reco Quantity (CS)",
+                "filter": "agNumberColumnFilter",
+                # "suppressSizeToFit": True,
+                "cellStyle": {
+                    "text-align": "center"
+                }
+            }
+        ]
+    }
+
+    st.info("Filler SKU Recommendation")
+    AgGrid(
+        filler,
+        gridOptions=filler_grid_options,
+        columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
+        fit_columns_on_grid_load=True,
+        theme="alpine",
+        custom_css=custom_css
+    )
