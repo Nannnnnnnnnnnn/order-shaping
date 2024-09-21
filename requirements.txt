@@ -2,4 +2,5 @@ streamlit
 pandas
 numpy
 gurobipy
+st_aggrid
 openpyxl
