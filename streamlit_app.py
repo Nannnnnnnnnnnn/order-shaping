@@ -117,7 +117,7 @@ if uploaded_file is not None:
             "Category": order_data["品类名称"],
             "SKU Number": order_data["宝洁八位码"],
             "SKU Quantity Limit (-MIN CS, +MAX CS)": ["(-" + min_str + ", +" + max_str + ")" for min_str, max_str in zip(np.array(order_data["Min到货（箱数）"]), np.array(order_data["Max到货（箱数）"]))],
-            "Reco Quantity (CS)": ["+" + cs_str for cs_str in order_data["Final CS"]]
+            "Reco Quantity (CS)": ["+" + cs_str for cs_str in order_data["调整CS"]]
         }
     )
 
