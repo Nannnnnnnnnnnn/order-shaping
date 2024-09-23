@@ -27,7 +27,7 @@ if uploaded_file is not None:
     order_data = pd.read_excel(uploaded_file, sheet_name="Consolidated Input",
                                dtype={"Ship to": str, "配送中心名称": str, "品类名称": str, "商品名称": str, "宝洁八位码": str,
                                       "宝洁DC": str, "Sales Unit": str,
-                                      "Min到货（箱数）": str, "Max到货（箱数）": str, "Final CS": str},
+                                      "Min到货（箱数）": str, "Max到货（箱数）": str, "调整CS": str},
                                parse_dates=["预约到货时间"])
     truck_data = pd.read_excel(uploaded_file, dtype={"车型": str}, sheet_name="车型数据")
 
