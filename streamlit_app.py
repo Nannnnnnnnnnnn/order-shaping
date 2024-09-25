@@ -35,7 +35,12 @@ site = Site(sharepointSite, version=Version.v365, authcookie=authcookie)
 folder = site.Folder("Shared Documents/31. Order Loss Analysis/JD Full Truck Load\Order Shaping Tool/Input_MD")
 filename = "SKU主数据.xlsx"
 
-st.write(folder.get_file(filename))
+with open("temp.xlsx", mode='wb') as file:
+    file.write(folder.get_file(filename))
+    fileContent = file.read()
+
+df = pd.read_excel("temp.xlsx")
+st.write(df)
 
 # File Uploading
 uploaded_file = st.file_uploader(label="Please upload the order and truck type data file:", type="xlsx")
