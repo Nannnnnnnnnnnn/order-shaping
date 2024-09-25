@@ -31,6 +31,11 @@ sharepointSite = "https://pgone.sharepoint.com/sites/GCInnovationandCapabilityTe
 website = "https://pgone.sharepoint.com"
 
 authcookie = Office365(website, username=sharepointUsername, password=sharepointPassword).GetCookies()
+site = Site(sharepointSite, version=Version.v365, authcookie=authcookie, verify_ssl=False)
+folder = site.Folder('Shared%20Documents/25.%20Dynamic%20Supply/1.%20Space%20Utilization/0.%20Inputs')
+filename = "Space%20Usage%20Recording%20Summary.csv"
+
+st.write(folder.get_file(filename))
 
 # File Uploading
 uploaded_file = st.file_uploader(label="Please upload the order and truck type data file:", type="xlsx")
