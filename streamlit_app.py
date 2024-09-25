@@ -32,8 +32,8 @@ website = "https://pgone.sharepoint.com"
 
 authcookie = Office365(website, username=sharepointUsername, password=sharepointPassword).GetCookies()
 site = Site(sharepointSite, version=Version.v365, authcookie=authcookie)
-folder = site.Folder("Shared Documents/25. Dynamic Supply/1. Space Utilization/0. Inputs")
-filename = "Space Usage Recording Summary.csv"
+folder = site.Folder("Shared Documents/31. Order Loss Analysis/JD Full Truck Load\Order Shaping Tool/Input_MD")
+filename = "SKU主数据.xlsx"
 
 st.write(folder.get_file(filename))
 
