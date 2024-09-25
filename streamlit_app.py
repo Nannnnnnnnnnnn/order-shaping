@@ -25,6 +25,7 @@ st.caption("Feel free to contact developer _Wang Nan_ if you have any question: 
 st.divider()
 
 
+# Read Master Data
 sharepointUsername = "wang.n.22@pg.com"
 sharepointPassword = "POIUytrEWQ#2339"
 sharepointSite = "https://pgone.sharepoint.com/sites/GCInnovationandCapabilityTeam"
@@ -33,13 +34,35 @@ website = "https://pgone.sharepoint.com"
 authcookie = Office365(website, username=sharepointUsername, password=sharepointPassword).GetCookies()
 site = Site(sharepointSite, version=Version.v365, authcookie=authcookie)
 folder = site.Folder("Shared Documents/31. Order Loss Analysis/JD Full Truck Load\Order Shaping Tool/Input_MD")
-filename = "SKU主数据.xlsx"
+truck_data_filename = "Tariff.xlsx"
+sku_transfer_data_filename = "京东直供数据2024_0912.xlsx"
+shipto_city_data_filename = "JD B2C 线路明细.xlsx"
+sku_master_filename = "SKU主数据.xlsx"
 
-with open("temp.xlsx", mode='wb') as file:
-    file.write(folder.get_file(filename))
+with open("truck_data_temp.xlsx", mode='wb') as file:
+    file.write(folder.get_file(truck_data_filename))
 
-df = pd.read_excel("temp.xlsx")
-st.write(df)
+truck_data = pd.read_excel("truck_data_temp.xlsx", dtype={"Ship-to": str, "Truck Type": str, "Optimal Truck Type": str, "Customer Name": str})
+
+with open("sku_transfer_data_temp.xlsx", mode='wb') as file:
+    file.write(folder.get_file(sku_transfer_data_filename))
+
+sku_transfer_data = pd.read_excel("sku_transfer_data_temp.xlsx", dtype={"京东码": str, "宝洁码": str})
+
+with open("shipto_city_data_temp.xlsx", mode='wb') as file:
+    file.write(folder.get_file(shipto_city_data_filename))
+
+shipto_city_data = pd.read_excel("shipto_city_data_temp.xlsx", dtype={"City": str, "品类": str, "shipto": str})
+
+with open("sku_master_temp.xlsx", mode='wb') as file:
+    file.write(folder.get_file(sku_master_filename))
+
+sku_master = pd.read_excel("sku_master_temp.xlsx", dtype={"material_num": str, "category": str})
+
+st.write(truck_data)
+st.write(sku_transfer_data)
+st.write(shipto_city_data)
+st.write(sku_master)
 
 # File Uploading
 uploaded_file = st.file_uploader(label="Please upload the order and truck type data file:", type="xlsx")
