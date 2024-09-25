@@ -1,4 +1,7 @@
 import streamlit as st
+from shareplum import Site
+from shareplum import Office365
+from shareplum.site import Version
 import pyodbc
 import pandas as pd
 import numpy as np
@@ -21,6 +24,13 @@ st.title("Order Shaping Tool")
 st.caption("Feel free to contact developer _Wang Nan_ if you have any question: wang.n.22@pg.com")
 st.divider()
 
+
+sharepointUsername = "wang.n.22@pg.com"
+sharepointPassword = "POIUytrEWQ#2339"
+sharepointSite = "https://pgone.sharepoint.com/sites/GCInnovationandCapabilityTeam"
+website = "https://pgone.sharepoint.com"
+
+authcookie = Office365(website, username=sharepointUsername, password=sharepointPassword).GetCookies()
 
 # File Uploading
 uploaded_file = st.file_uploader(label="Please upload the order and truck type data file:", type="xlsx")
