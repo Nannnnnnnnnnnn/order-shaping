@@ -2,7 +2,6 @@ import streamlit as st
 from shareplum import Site
 from shareplum import Office365
 from shareplum.site import Version
-import pyodbc
 import pandas as pd
 import numpy as np
 import gurobipy as grb
@@ -35,6 +34,7 @@ authcookie = Office365(website, username=sharepointUsername, password=sharepoint
 site = Site(sharepointSite, version=Version.v365, authcookie=authcookie)
 folder = site.Folder("Shared Documents/31. Order Loss Analysis/JD Full Truck Load\Order Shaping Tool/Input_MD")
 truck_data_filename = "Tariff.xlsx"
+ideal_truck_type_filename = "Ideal Truck Type.xlsx"
 sku_transfer_data_filename = "京东直供数据2024_0912.xlsx"
 shipto_city_data_filename = "JD B2C 线路明细.xlsx"
 sku_master_filename = "SKU主数据.xlsx"
@@ -42,7 +42,12 @@ sku_master_filename = "SKU主数据.xlsx"
 with open("truck_data_temp.xlsx", mode='wb') as file:
     file.write(folder.get_file(truck_data_filename))
 
-truck_data = pd.read_excel("truck_data_temp.xlsx", dtype={"Ship-to": str, "Truck Type": str, "Optimal Truck Type": str, "Customer Name": str})
+truck_data = pd.read_excel("truck_data_temp.xlsx", dtype={"Ship-to": str, "Truck Type": str, "Optimal Truck Type": str})
+
+with open("ideal_truck_type_temp.xlsx", mode='wb') as file:
+    file.write(folder.get_file(ideal_truck_type_filename))
+
+ideal_truck_type = pd.read_excel("ideal_truck_type_temp.xlsx", dtype={"Ship-to": str, "Customer Name": str})
 
 with open("sku_transfer_data_temp.xlsx", mode='wb') as file:
     file.write(folder.get_file(sku_transfer_data_filename))
@@ -60,6 +65,7 @@ with open("sku_master_temp.xlsx", mode='wb') as file:
 sku_master = pd.read_excel("sku_master_temp.xlsx", dtype={"material_num": str, "category": str})
 
 st.write(truck_data)
+st.write(ideal_truck_type)
 st.write(sku_transfer_data)
 st.write(shipto_city_data)
 st.write(sku_master)
