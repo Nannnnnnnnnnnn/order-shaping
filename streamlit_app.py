@@ -31,8 +31,8 @@ sharepointSite = "https://pgone.sharepoint.com/sites/GCInnovationandCapabilityTe
 website = "https://pgone.sharepoint.com"
 
 authcookie = Office365(website, username=sharepointUsername, password=sharepointPassword).GetCookies()
-site = Site(sharepointSite, version=Version.v365, authcookie=authcookie, verify_ssl=False)
-folder = site.Folder('Shared Documents/25. Dynamic Supply/1. Space Utilization/0. Inputs')
+site = Site(sharepointSite, version=Version.v365, authcookie=authcookie)
+folder = site.Folder("Shared Documents/25. Dynamic Supply/1. Space Utilization/0. Inputs")
 filename = "Space Usage Recording Summary.csv"
 
 st.write(folder.get_file(filename))
