@@ -37,7 +37,6 @@ filename = "SKU主数据.xlsx"
 
 with open("temp.xlsx", mode='wb') as file:
     file.write(folder.get_file(filename))
-    fileContent = file.read()
 
 df = pd.read_excel("temp.xlsx")
 st.write(df)
