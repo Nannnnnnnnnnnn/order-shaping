@@ -1,4 +1,5 @@
 streamlit
+pyodbc
 pandas
 numpy
 gurobipy
