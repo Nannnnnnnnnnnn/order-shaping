@@ -86,7 +86,8 @@ if len(uploaded_files) > 0:
         order_data = pd.concat([order_data, order_data_split])
     order_data = order_data[order_data["shipto"].isin(["2003213268", "2002921387"])]
     missing_sku_list = ", ".join("{0}".format(sku) for sku in list(order_data[(order_data["volume_cube"].isnull()) | (order_data["weight_ton"].isnull())]["京东码"]))
-    st.warning("**Warning:**" + " Missing weight/volume master data of SKU " + missing_sku_list + ", which will be excluded from the optimization.")
+    if len(missing_sku_list) > 0:
+        st.warning("**Warning:**" + " Missing weight/volume master data of SKU " + missing_sku_list + ", which will be excluded from the optimization.")
 
 
 # Calculation Function
