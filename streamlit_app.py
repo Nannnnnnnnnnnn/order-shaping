@@ -97,8 +97,9 @@ if len(uploaded_files) > 0:
         order_data_split = pd.merge(order_data_split, shipto_city_data.loc[:, ["Region", "shipto"]], how="left", on="Region")
         order_data_split["Source"] = uploaded_file.name
         order_data = pd.concat([order_data, order_data_split])
+    upload_source_list = list(set(list(order_data["Source"])))
     order_data = order_data[order_data["shipto"].isin(["2003213268", "2002921387"])]
-    st.write(order_data)
+    download_source_list = list(set(list(order_data["Source"])))
     missing_sku_list = ", ".join("{0}".format(sku) for sku in list(order_data[(order_data["volume_cube"].isnull()) | (order_data["weight_ton"].isnull())]["京东码"]))
     if len(missing_sku_list) > 0:
         st.warning("**Warning:**" + " Missing weight/volume master data of SKU " + missing_sku_list + ", which will be excluded from the optimization.")
@@ -657,27 +658,30 @@ if len(uploaded_files) > 0:
     order_data["Max调整数量"] = order_data["max_filler_CS"] * order_data["箱规⑥"]
     order_data["建议调整数量"] = order_data["建议调整数量"] * order_data["箱规⑥"]
 
-    for source in set(list(order_data["Source"])):
-        if ("PCC" in source) or ("FHC" in source):
-            source_order_data = order_data[(order_data["Source"] == source) & (order_data["配送中心*(格式：北京,上海,广州)"] == "北京")]
-            source_original_order_data = original_order_data[original_order_data["Source"] == source]
-            source_original_order_data = pd.merge(source_original_order_data, source_order_data.loc[:, ["京东码", "Max调整数量", "建议调整数量"]], how="left", on="京东码")
-            index = source_original_order_data.columns.tolist().index("北京")
-            source_original_order_data.insert(index + 1, "北京_Max调整数量", source_original_order_data.pop("Max调整数量"))
-            source_original_order_data.insert(index + 2, "北京_建议调整数量", source_original_order_data.pop("建议调整数量"))
-            output_data = source_original_order_data.rename(columns={"京东码": "商品编码"})
-        else:
-            output_data = order_data[order_data["Source"] == source]
-            output_data = output_data.rename(columns={"京东码": "sku*"})
-            output_data.drop(["material_num", "箱规⑥", "CS", "max_filler_CS", "category", "volume_cube", "weight_ton", "Region", "shipto", "Source"], axis=1, inplace=True)
+    for source in upload_source_list:
+        if source in download_source_list:
+            if ("PCC" in source) or ("FHC" in source):
+                source_order_data = order_data[(order_data["Source"] == source) & (order_data["配送中心*(格式：北京,上海,广州)"] == "北京")]
+                source_original_order_data = original_order_data[original_order_data["Source"] == source]
+                source_original_order_data = pd.merge(source_original_order_data, source_order_data.loc[:, ["京东码", "Max调整数量", "建议调整数量"]], how="left", on="京东码")
+                index = source_original_order_data.columns.tolist().index("北京")
+                source_original_order_data.insert(index + 1, "北京_Max调整数量", source_original_order_data.pop("Max调整数量"))
+                source_original_order_data.insert(index + 2, "北京_建议调整数量", source_original_order_data.pop("建议调整数量"))
+                output_data = source_original_order_data.rename(columns={"京东码": "商品编码"})
+            else:
+                output_data = order_data[order_data["Source"] == source]
+                output_data = output_data.rename(columns={"京东码": "sku*"})
+                output_data.drop(["material_num", "箱规⑥", "CS", "max_filler_CS", "category", "volume_cube", "weight_ton", "Region", "shipto", "Source"], axis=1, inplace=True)
 
-        output = BytesIO()
-        with pd.ExcelWriter(output) as writer:
-            output_data.to_excel(writer, index=False)
-        st.download_button(
-            label="Download Optimization Result for " + source,
-            data=output.getvalue(),
-            file_name=source.split(".")[0] + "_result.xlsx",
-            mime="application/vnd.ms-excel"
-        )
-        
+            output = BytesIO()
+            with pd.ExcelWriter(output) as writer:
+                output_data.to_excel(writer, index=False)
+            st.download_button(
+                label="Download Optimization Result for " + source,
+                data=output.getvalue(),
+                file_name=source.split(".")[0] + "_result.xlsx",
+                mime="application/vnd.ms-excel"
+            )
+        else:
+            st.warning("There is no order data within the testing scope in the file " + source)
+
