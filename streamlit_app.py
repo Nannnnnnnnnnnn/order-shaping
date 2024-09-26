@@ -636,8 +636,6 @@ if len(uploaded_files) > 0:
     order_data["Max调整数量"] = 0
     order_data["建议调整数量"] = 0
 
-    st.write(order_data)
-    st.write(order_data_result)
     for material_num in order_data_result["material_num"]:
         order_data_related = order_data[order_data["material_num"] == material_num]
         if len(order_data_related) == 1:
@@ -656,7 +654,6 @@ if len(uploaded_files) > 0:
                     final_qty.append(total_qty - current_sum)
             order_data.loc[order_data["material_num"] == material_num, "建议调整数量"] = final_qty
 
-    st.write(order_data)
     order_data["Max调整数量"] = order_data["max_filler_CS"] * order_data["箱规⑥"]
     order_data["建议调整数量"] = order_data["建议调整数量"] * order_data["箱规⑥"]
 
