@@ -387,6 +387,7 @@ if len(uploaded_files) > 0:
         ideal_vfr = ideal_truck_type_data["Ideal VFR"][index]
         ideal_wfr = ideal_truck_type_data["Ideal WFR"][index]
         ideal_mix = ideal_truck_type_data["Ideal Mix"][index]
+        customer_name = ideal_truck_type_data["Customer Name"][index]
 
         if "Adopt数量" in order_data.columns.tolist():
             if order_data["Adopt数量"].sum() > 0:
@@ -418,8 +419,8 @@ if len(uploaded_files) > 0:
                 st.markdown("Ship-to")
                 st.markdown("Customer")
             with col2:
-                st.markdown("2002921387")
-                st.markdown("北京京东世纪贸易有限公司")
+                st.markdown(shipto)
+                st.markdown(customer_name)
 
         st.info("Order Shaping Top Line Result")
         with st.container(border=True):
