@@ -33,7 +33,7 @@ website = "https://pgone.sharepoint.com"
 
 authcookie = Office365(website, username=sharepointUsername, password=sharepointPassword).GetCookies()
 site = Site(sharepointSite, version=Version.v365, authcookie=authcookie)
-folder = site.Folder("Shared Documents/31. Order Loss Analysis/JD Full Truck Load\Order Shaping Tool/Input_MD")
+folder = site.Folder("Shared Documents/31. Order Loss Analysis/JD Full Truck Load/Order Shaping Tool/Input_MD")
 truck_data_filename = "Tariff.xlsx"
 ideal_truck_type_data_filename = "Ideal Truck Type.xlsx"
 sku_transfer_data_filename = "京东直供数据2024_0912.xlsx"
@@ -68,23 +68,37 @@ sku_master = pd.read_excel("sku_master_temp.xlsx", dtype={"material_num": str, "
 
 # File Uploading
 uploaded_files = st.file_uploader(label="Please upload the order and truck type data file:", type="xlsx", accept_multiple_files=True)
+original_order_data = pd.DataFrame()
 order_data = pd.DataFrame()
+filler_rate = 1
+
 if len(uploaded_files) > 0:
     for uploaded_file in uploaded_files:
-        original_order_data_split = pd.read_excel(uploaded_file, dtype={"sku*": str, "配送中心*(格式：北京,上海,广州)": str})
-        order_data_split = original_order_data_split.rename(columns={"sku*": "京东码"})
+        file_name = str(uploaded_file.name)
+        if ("PCC" in uploaded_file.name) or ("FHC" in uploaded_file.name):
+            original_order_data_split = pd.read_excel(uploaded_file, dtype={"商品编码": str})
+            order_data_split = pd.melt(original_order_data_split, id_vars="商品编码", value_vars=["北京"], var_name="配送中心*(格式：北京,上海,广州)", value_name="采购需求数量*")
+            order_data_split = order_data_split.rename(columns={"商品编码": "京东码"})
+
+            original_order_data_split["Source"] = uploaded_file.name
+            original_order_data_split = original_order_data_split.rename(columns={"商品编码": "京东码"})
+            original_order_data = pd.concat([original_order_data, original_order_data_split])
+        else:
+            original_order_data_split = pd.read_excel(uploaded_file, dtype={"sku*": str, "配送中心*(格式：北京,上海,广州)": str})
+            order_data_split = original_order_data_split.rename(columns={"sku*": "京东码"})
         order_data_split = pd.merge(order_data_split, sku_transfer_data.loc[:, ["京东码", "宝洁码", "箱规⑥"]], how="left", on="京东码")
         order_data_split["CS"] = order_data_split["采购需求数量*"] / order_data_split["箱规⑥"]
-        order_data_split["max_filler_CS"] = order_data_split["Max调整数量"] / order_data_split["箱规⑥"]
+        order_data_split["max_filler_CS"] = order_data_split["采购需求数量*"] / order_data_split["箱规⑥"] * filler_rate
         order_data_split = order_data_split.rename(columns={"宝洁码": "material_num"})
         order_data_split = pd.merge(order_data_split, sku_master.loc[:, ["material_num", "category", "volume_cube", "weight_ton"]], how="left", on="material_num")
-        order_data_split["City"] = order_data_split["配送中心*(格式：北京,上海,广州)"] + "市"
+        order_data_split["Region"] = order_data_split["配送中心*(格式：北京,上海,广州)"]
         category = np.array(order_data_split[order_data_split["category"].notnull()]["category"])
         shipto_city_data = shipto_city_data[shipto_city_data["品类"].str.contains(category[0], na=False)]
-        order_data_split = pd.merge(order_data_split, shipto_city_data.loc[:, ["City", "shipto"]], how="left", on="City")
+        order_data_split = pd.merge(order_data_split, shipto_city_data.loc[:, ["Region", "shipto"]], how="left", on="Region")
         order_data_split["Source"] = uploaded_file.name
         order_data = pd.concat([order_data, order_data_split])
     order_data = order_data[order_data["shipto"].isin(["2003213268", "2002921387"])]
+    st.write(order_data)
     missing_sku_list = ", ".join("{0}".format(sku) for sku in list(order_data[(order_data["volume_cube"].isnull()) | (order_data["weight_ton"].isnull())]["京东码"]))
     if len(missing_sku_list) > 0:
         st.warning("**Warning:**" + " Missing weight/volume master data of SKU " + missing_sku_list + ", which will be excluded from the optimization.")
@@ -231,7 +245,7 @@ def model_execution(initial_order_weight, initial_order_volume, order_unit_weigh
 def order_shaping(order_data, truck_data):
     # Data Initialize
     order_data = pd.concat(
-        [order_data.groupby(by=["shipto", "material_num"])[["CS", "Max调整数量", "max_filler_CS"]].sum(),
+        [order_data.groupby(by=["shipto", "material_num"])[["CS", "max_filler_CS"]].sum(),
          order_data.groupby(by=["shipto", "material_num"])[["category", "volume_cube", "weight_ton"]].max()], axis=1)
     order_data["category"] = order_data["category"].astype(str)
     order_data = order_data.rename(columns={"volume_cube": "unit_volume_cube", "weight_ton": "unit_weight_ton"})
@@ -367,15 +381,16 @@ if len(uploaded_files) > 0:
         else:
             slog = "0%"
 
-        ideal_unit_cost = ideal_truck_type_data["Ideal Unit Cost"][0]
-        ideal_vfr = ideal_truck_type_data["Ideal VFR"][0]
-        ideal_wfr = ideal_truck_type_data["Ideal WFR"][0]
-        ideal_mix = ideal_truck_type_data["Ideal Mix"][0]
+        index = ideal_truck_type_data.index.tolist()[0]
+        ideal_unit_cost = ideal_truck_type_data["Ideal Unit Cost"][index]
+        ideal_vfr = ideal_truck_type_data["Ideal VFR"][index]
+        ideal_wfr = ideal_truck_type_data["Ideal WFR"][index]
+        ideal_mix = ideal_truck_type_data["Ideal Mix"][index]
 
         if "Adopt数量" in order_data.columns.tolist():
             if order_data["Adopt数量"].sum() > 0:
-                weight = order_data["weight_ton"] * order_data["Adopt数量"]
-                volume = order_data["volume_cube"] * order_data["Adopt数量"]
+                weight = order_data["weight_ton"] * order_data["Adopt数量"] / order_data["箱规⑥"]
+                volume = order_data["volume_cube"] * order_data["Adopt数量"] / order_data["箱规⑥"]
                 initial_order_weight = weight.sum()
                 initial_order_volume = volume.sum()
 
@@ -617,8 +632,9 @@ if len(uploaded_files) > 0:
             custom_css=custom_css
         )
 
-    index = order_data.columns.tolist().index("Max调整数量")
-    order_data.insert(index + 1, "建议调整数量", 0)
+    index = order_data.columns.tolist().index("采购需求数量*")
+    order_data.insert(index + 1, "Max调整数量", 0)
+    order_data.insert(index + 2, "建议调整数量", 0)
 
     for material_num in order_data_result["material_num"]:
         order_data_related = order_data[order_data["material_num"] == material_num]
@@ -638,10 +654,23 @@ if len(uploaded_files) > 0:
                     final_qty.append(total_qty - current_sum)
             order_data.loc[order_data["material_num"] == material_num, "建议调整数量"] = final_qty
 
+    order_data["Max调整数量"] = order_data["max_filler_CS"] * order_data["箱规⑥"]
+    order_data["建议调整数量"] = order_data["建议调整数量"] * order_data["箱规⑥"]
+
     for source in set(list(order_data["Source"])):
-        output_data = order_data[order_data["Source"] == source]
-        output_data = output_data.rename(columns={"京东码": "sku*"})
-        output_data.drop(["material_num", "箱规⑥", "CS", "max_filler_CS", "category", "volume_cube", "weight_ton", "City", "shipto", "Source"], axis=1, inplace=True)
+        if ("PCC" in source) or ("FHC" in source):
+            source_order_data = order_data[(order_data["Source"] == source) & (order_data["配送中心*(格式：北京,上海,广州)"] == "北京")]
+            source_original_order_data = original_order_data[original_order_data["Source"] == source]
+            source_original_order_data = pd.merge(source_original_order_data, source_order_data.loc[:, ["京东码", "Max调整数量", "建议调整数量"]], how="left", on="京东码")
+            index = source_original_order_data.columns.tolist().index("北京")
+            source_original_order_data.insert(index + 1, "北京_Max调整数量", source_original_order_data.pop("Max调整数量"))
+            source_original_order_data.insert(index + 2, "北京_建议调整数量", source_original_order_data.pop("建议调整数量"))
+            output_data = source_original_order_data.rename(columns={"京东码": "商品编码"})
+        else:
+            output_data = order_data[order_data["Source"] == source]
+            output_data = output_data.rename(columns={"京东码": "sku*"})
+            output_data.drop(["material_num", "箱规⑥", "CS", "max_filler_CS", "category", "volume_cube", "weight_ton", "Region", "shipto", "Source"], axis=1, inplace=True)
+
         output = BytesIO()
         with pd.ExcelWriter(output) as writer:
             output_data.to_excel(writer, index=False)
