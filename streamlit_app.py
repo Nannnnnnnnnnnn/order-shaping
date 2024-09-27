@@ -93,7 +93,7 @@ if len(uploaded_files) > 0:
         order_data_split = pd.merge(order_data_split, sku_master.loc[:, ["material_num", "category", "volume_cube", "weight_ton"]], how="left", on="material_num")
         order_data_split["Region"] = order_data_split["配送中心*(格式：北京,上海,广州)"]
         category = np.array(order_data_split[order_data_split["category"].notnull()]["category"])
-        source_shipto_city_data = shipto_city_data[shipto_city_data["品类"].str.startswith(category[0] + "/", na=False) | shipto_city_data["品类"].str.contains("/" + category[0], na=False)]
+        source_shipto_city_data = shipto_city_data[shipto_city_data["品类"].str.contains(category[0], na=False)]
         order_data_split = pd.merge(order_data_split, source_shipto_city_data.loc[:, ["Region", "shipto"]], how="left", on="Region")
         order_data_split["Source"] = uploaded_file.name
         order_data = pd.concat([order_data, order_data_split])
