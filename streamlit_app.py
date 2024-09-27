@@ -281,10 +281,16 @@ def order_shaping(order_data, truck_data):
     min_qty = - max_qty
     category_list = order_data["category"]
     material_list = order_data["material_num"]
-    leave_category_list = leave_order_data["category"]
-    leave_material_list = leave_order_data["material_num"]
-    leave_max_qty = np.array(leave_order_data["max_filler_CS"])
-    leave_filler_qty = np.zeros(len(leave_material_list))
+    if len(leave_order_data) > 0:
+        leave_category_list = leave_order_data["category"]
+        leave_material_list = leave_order_data["material_num"]
+        leave_max_qty = np.array(leave_order_data["max_filler_CS"])
+        leave_filler_qty = np.zeros(len(leave_material_list))
+    else:
+        leave_category_list = []
+        leave_material_list = []
+        leave_max_qty = []
+        leave_filler_qty = []
 
     if "Priority" in list(order_data.columns):
         priority_param = np.array(order_data["Priority"])
