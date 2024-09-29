@@ -661,7 +661,7 @@ if len(uploaded_files) > 0:
                     final_qty.append(total_qty - current_sum)
             selected_order_data.loc[selected_order_data["material_num"] == material_num, "建议调整数量"] = final_qty
 
-    selected_order_data["建议调整数量"] = selected_order_data["建议调整数量"] * order_data["箱规⑥"]
+    selected_order_data["建议调整数量"] = selected_order_data["建议调整数量"] * selected_order_data["箱规⑥"]
 
     for source in upload_source_list:
         if source in download_source_list:
