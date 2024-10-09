@@ -97,8 +97,8 @@ if len(uploaded_files) > 0:
         order_data = pd.concat([order_data, order_data_split])
     upload_source_list = list(set(list(order_data["Source"])))
     not_selected_shipto = list(set(list(order_data["shipto"])) - set(selected_shipto))
-    not_selected_order_data = order_data[order_data["shipto"].isin(not_selected_shipto)]
-    selected_order_data = order_data[order_data["shipto"].isin(selected_shipto)]
+    not_selected_order_data = order_data[(order_data["shipto"].isin(not_selected_shipto)) & (order_data["采购需求数量*"] == 0)]
+    selected_order_data = order_data[(order_data["shipto"].isin(selected_shipto)) & (order_data["采购需求数量*"] != 0)]
     download_source_list = list(set(list(selected_order_data["Source"])))
     missing_sku_list = ", ".join("{0}".format(sku) for sku in list(selected_order_data[(selected_order_data["volume_cube"].isnull()) | (selected_order_data["weight_ton"].isnull())]["京东码"]))
     if len(missing_sku_list) > 0:
