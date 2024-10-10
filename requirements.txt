@@ -2,6 +2,7 @@ streamlit
 shareplum
 pyodbc
 pandas
+xlrd
 numpy
 gurobipy
 streamlit-aggrid
