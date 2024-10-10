@@ -73,7 +73,7 @@ order_data = pd.DataFrame()
 # selected_shipto = ["2003213268"]
 selected_shipto = ["2003213268", "2002921387"]
 filler_rate = 1
-
+st.write("AAA")
 if len(uploaded_files) > 0:
     for uploaded_file in uploaded_files:
         if "AO" in uploaded_file.name:
