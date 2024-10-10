@@ -87,11 +87,13 @@ if len(uploaded_files) > 0:
                 city_col_name = list(original_order_data_split.columns[original_order_data_split.columns.str.contains("配送中心")])[0]
                 original_order_data_split = original_order_data_split.astype({"sku*": str, city_col_name: str})
                 order_data_split = original_order_data_split.rename(columns={"sku*": "京东码", city_col_name: "配送中心*(格式：北京,上海,广州)"})
+                order_data_split["Source"] = uploaded_file.name + "_竖版"
             else:
                 original_order_data_split = original_order_data_split.astype({"商品编码": str})
                 # order_data_split = pd.melt(original_order_data_split, id_vars="商品编码", value_vars=["北京"], var_name="配送中心*(格式：北京,上海,广州)", value_name="采购需求数量*")
                 order_data_split = original_order_data_split.rename(columns={"商品编码": "京东码", "北京": "采购需求数量*"})
                 order_data_split["配送中心*(格式：北京,上海,广州)"] = "北京"
+                order_data_split["Source"] = uploaded_file.name + "_横版"
             order_data_split = pd.merge(order_data_split, sku_transfer_data.loc[:, ["京东码", "宝洁码", "箱规⑥"]], how="left", on="京东码")
             order_data_split["CS"] = order_data_split["采购需求数量*"] / order_data_split["箱规⑥"]
             order_data_split["max_filler_CS"] = order_data_split["采购需求数量*"] / order_data_split["箱规⑥"] * filler_rate
@@ -101,7 +103,6 @@ if len(uploaded_files) > 0:
             category = np.array(order_data_split[order_data_split["category"].notnull()]["category"])
             source_shipto_city_data = shipto_city_data[shipto_city_data["品类"].str.startswith(category[0] + "/", na=False) | shipto_city_data["品类"].str.contains("/" + category[0], na=False)]
             order_data_split = pd.merge(order_data_split, source_shipto_city_data.loc[:, ["Region", "shipto"]], how="left", on="Region")
-            order_data_split["Source"] = uploaded_file.name
             order_data = pd.concat([order_data, order_data_split])
     upload_source_list = list(set(list(order_data["Source"])))
     not_selected_shipto = list(set(list(order_data["shipto"])) - set(selected_shipto))
@@ -158,12 +159,12 @@ def baseline(initial_order_weight, initial_order_volume, truck_capacity_weight, 
 
     cost = model.objVal
     unit_cost = cost / max(truck_loading_weight, truck_loading_volume / 3)
-    loss = (72.8 - unit_cost) * max(truck_loading_weight, truck_loading_volume / 3)
+    pt = max(truck_loading_weight, truck_loading_volume / 3)
     wfr = truck_loading_weight / total_capacity_weight
     vfr = truck_loading_volume / total_capacity_volume
     mix = truck_loading_volume / truck_loading_weight
 
-    return truck_qty, cost, unit_cost, loss, wfr, vfr, mix
+    return truck_qty, cost, unit_cost, pt, wfr, vfr, mix
 
 
 def model_execution(initial_order_weight, initial_order_volume, order_unit_weight,
@@ -209,8 +210,8 @@ def model_execution(initial_order_weight, initial_order_volume, order_unit_weigh
                     grb.LinExpr(truck_capacity_weight, q[n:(n + m)]), "Capacity Constraint")
     model.addConstr(grb.LinExpr(order_unit_volume, q[:n]) + initial_order_volume * p <=
                     grb.LinExpr(truck_capacity_volume, q[n:(n + m)]), "Capacity Constraint")
+    model.addConstr(grb.LinExpr(order_unit_weight, q[:n]) + initial_order_weight * p <= 1, "PT Constraint")
     model.addConstr((grb.LinExpr(order_unit_volume, q[:n]) + initial_order_volume * p) / 3 <= 1, "PT Constraint")
-    model.addConstr((grb.LinExpr(order_unit_volume, q[:n]) + initial_order_volume * p) / 3 >= 1, "PT Constraint")
     model.addConstr(grb.LinExpr(order_unit_weight, q[:n]) + initial_order_weight * p >=
                     1 - M * (1 - q[n * 2 + m * 2]), "PT Constraint")
     model.addConstr((grb.LinExpr(order_unit_volume, q[:n]) + initial_order_volume * p) / 3 >=
@@ -246,15 +247,17 @@ def model_execution(initial_order_weight, initial_order_volume, order_unit_weigh
                 truck_qty.append(var.x / p_value)
                 total_capacity_weight += var.x / p_value * truck_capacity_weight[var.index - n - 1]
                 total_capacity_volume += var.x / p_value * truck_capacity_volume[var.index - n - 1]
-    model.setParam(grb.GRB.Param.ObjNumber, 0)
+    # model.setParam(grb.GRB.Param.ObjNumber, 0)
     unit_cost = model.objNVal
     cost = unit_cost * max(truck_loading_weight, truck_loading_volume / 3)
-    loss = (72.8 - unit_cost) * max(truck_loading_weight, truck_loading_volume / 3)
+    # cost = sum(np.multiply(truck_cost, truck_qty))
+    pt = max(truck_loading_weight, truck_loading_volume / 3)
+    # unit_cost = cost / pt
     wfr = truck_loading_weight / total_capacity_weight
     vfr = truck_loading_volume / total_capacity_volume
     mix = truck_loading_volume / truck_loading_weight
 
-    return filler_qty, truck_qty, unit_cost, cost, loss, wfr, vfr, mix
+    return filler_qty, truck_qty, unit_cost, cost, pt, wfr, vfr, mix
 
 
 def order_shaping(ao_order_data, order_data, truck_data):
@@ -338,12 +341,12 @@ def order_shaping(ao_order_data, order_data, truck_data):
     ideal_truck_cost = np.array(truck_data[truck_data["Optimal Truck Type"] == "Y"]["Base Charge"])
 
     # Calculate
-    base_truck_qty, base_cost, base_unit_cost, base_loss, base_wfr, base_vfr, base_mix = baseline(initial_order_weight, initial_order_volume, truck_capacity_weight, truck_capacity_volume, truck_cost)
-    filler_qty, truck_qty, unit_cost, cost, loss, wfr, vfr, mix = model_execution(initial_order_weight, initial_order_volume,
-                                                                 order_unit_weight,
-                                                                 order_unit_volume, max_qty, min_qty,
-                                                                 priority_param, ideal_truck_capacity_weight,
-                                                                 ideal_truck_capacity_volume, ideal_truck_cost)
+    base_truck_qty, base_cost, base_unit_cost, base_pt, base_wfr, base_vfr, base_mix = baseline(initial_order_weight, initial_order_volume, truck_capacity_weight, truck_capacity_volume, truck_cost)
+    filler_qty, truck_qty, unit_cost, cost, pt, wfr, vfr, mix = model_execution(initial_order_weight, initial_order_volume,
+                                                                                      order_unit_weight,
+                                                                                      order_unit_volume, max_qty, min_qty,
+                                                                                      priority_param, ideal_truck_capacity_weight,
+                                                                                      ideal_truck_capacity_volume, ideal_truck_cost)
 
     if len(leave_order_data) > 0:
         category_list = pd.concat([category_list, leave_category_list])
@@ -352,12 +355,17 @@ def order_shaping(ao_order_data, order_data, truck_data):
         max_qty = np.array([int(qty) for qty in max_qty])
         filler_qty = np.concatenate((filler_qty, leave_filler_qty))
 
-    return base_truck_qty, base_cost, base_unit_cost, base_loss, base_wfr, base_vfr, base_mix, category_list, material_list, max_qty, filler_qty, truck_qty, unit_cost, cost, loss, wfr, vfr, mix
+    return base_truck_qty, base_cost, base_unit_cost, base_pt, base_wfr, base_vfr, base_mix, category_list, material_list, max_qty, filler_qty, truck_qty, unit_cost, cost, pt, wfr, vfr, mix
 
 
 # Calculation Execution and Display Result
 if len(uploaded_files) > 0:
     order_data_result = pd.DataFrame()
+    shipto_list = ["Ship-to: " + shipto for shipto in list(selected_order_data["shipto"].unique())]
+    shipto_num = len(shipto_list)
+    tab_vars = ["tab_" + str(i) for i in range(shipto_num)]
+    tab_vars = st.tabs(shipto_list)
+    label = 0
     for shipto in np.array(selected_order_data["shipto"].unique()):
         order_data = selected_order_data[selected_order_data["shipto"] == shipto]
         if len(original_ao_order_data) > 0:
@@ -375,7 +383,7 @@ if len(uploaded_files) > 0:
         truck_type = np.array(truck_data["Truck Type"])
         ideal_truck_type = np.array(truck_data[truck_data["Optimal Truck Type"] == "Y"]["Truck Type"])
 
-        base_truck_qty, base_cost, base_unit_cost, base_loss, base_wfr, base_vfr, base_mix, category_list, material_list, max_qty, filler_qty, truck_qty, unit_cost, cost, loss, wfr, vfr, mix = order_shaping(ao_order_data, order_data, truck_data)
+        base_truck_qty, base_cost, base_unit_cost, base_pt, base_wfr, base_vfr, base_mix, category_list, material_list, max_qty, filler_qty, truck_qty, unit_cost, cost, pt, wfr, vfr, mix = order_shaping(ao_order_data, order_data, truck_data)
         min_qty = - max_qty
         order_data_result_split = pd.DataFrame(
             {
@@ -385,6 +393,17 @@ if len(uploaded_files) > 0:
         )
         order_data_result_split["shipto"] = shipto
         order_data_result = pd.concat([order_data_result, order_data_result_split])
+
+        index = ideal_truck_type_data.index.tolist()[0]
+        ideal_unit_cost = ideal_truck_type_data["Ideal Unit Cost"][index]
+        ideal_vfr = ideal_truck_type_data["Ideal VFR"][index]
+        ideal_wfr = ideal_truck_type_data["Ideal WFR"][index]
+        ideal_mix = ideal_truck_type_data["Ideal Mix"][index]
+        customer_name = ideal_truck_type_data["Customer Name"][index]
+
+        base_loss = (ideal_unit_cost - base_unit_cost) * base_pt
+        loss = (ideal_unit_cost - unit_cost) * pt
+
         size_of_prize = loss - base_loss
         size_of_prize_percent = (loss - base_loss) / base_cost
         base_truck_selected = ""
@@ -403,13 +422,13 @@ if len(uploaded_files) > 0:
         else:
             base_slog = "0%"
 
-        saving = base_cost - cost
+        saving = (base_unit_cost - unit_cost) * pt
         saving_percent = saving / base_cost
         filler_qty = np.array([round(qty) for qty in filler_qty])
         qty_changed = 0
         for i in range(len(filler_qty)):
             qty_changed += filler_qty[i]
-            order_qty = initial_order_qty + qty_changed
+        order_qty = initial_order_qty + qty_changed
         qty_changed_percent = qty_changed / initial_order_qty
 
         truck_selected = ""
@@ -428,13 +447,6 @@ if len(uploaded_files) > 0:
         else:
             slog = "0%"
 
-        index = ideal_truck_type_data.index.tolist()[0]
-        ideal_unit_cost = ideal_truck_type_data["Ideal Unit Cost"][index]
-        ideal_vfr = ideal_truck_type_data["Ideal VFR"][index]
-        ideal_wfr = ideal_truck_type_data["Ideal WFR"][index]
-        ideal_mix = ideal_truck_type_data["Ideal Mix"][index]
-        customer_name = ideal_truck_type_data["Customer Name"][index]
-
         if "实际采纳数量" in order_data.columns.tolist():
             if order_data["实际采纳数量"].sum() > 0:
                 weight = order_data["weight_ton"] * order_data["实际采纳数量"] / order_data["箱规⑥"]
@@ -451,9 +463,11 @@ if len(uploaded_files) > 0:
                 truck_capacity_volume = np.array(truck_data["Volume Capacity"])
                 truck_cost = np.array(truck_data["Base Charge"])
 
-                adopt_truck_qty, adopt_cost, adopt_unit_cost, adopt_loss, adopt_wfr, adopt_vfr, adopt_mix = baseline(
+                adopt_truck_qty, adopt_cost, adopt_unit_cost, adopt_pt, adopt_wfr, adopt_vfr, adopt_mix = baseline(
                     initial_order_weight, initial_order_volume, truck_capacity_weight, truck_capacity_volume,
                     truck_cost)
+
+                adopt_loss = (ideal_unit_cost - adopt_unit_cost) * adopt_pt
 
                 adopt_truck_selected = ""
                 for i in range(len(adopt_truck_qty)):
@@ -471,228 +485,233 @@ if len(uploaded_files) > 0:
                 else:
                     adopt_slog = "0%"
 
-        st.info("Basic Info")
-        with st.container(border=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("Ship-to")
-                st.markdown("Customer")
-            with col2:
-                st.markdown(shipto)
-                st.markdown(customer_name)
+        with tab_vars[label]:
+            st.info("Basic Info")
+            with st.container(border=True):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("Ship-to")
+                    st.markdown("Customer")
+                with col2:
+                    st.markdown(shipto)
+                    st.markdown(customer_name)
 
-        st.info("Order Shaping Top Line Result")
-        with st.container(border=True):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.markdown("**Result**")
-                st.markdown("Size of Prize (RMB)")
-                st.markdown("Quantity Changed (CS)")
-            with col2:
-                st.markdown("**Absolute**")
-                st.markdown("{:.0f}".format(size_of_prize))
-                st.markdown(qty_changed)
-            with col3:
-                st.markdown("**%**")
-                st.markdown("{:.0f}%".format(size_of_prize_percent * 100))
-                st.markdown("{:.0f}%".format(qty_changed_percent * 100))
+            st.info("Order Shaping Top Line Result")
+            with st.container(border=True):
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.markdown("**Result**")
+                    st.markdown("Size of Prize (RMB)")
+                    st.markdown("Quantity Changed (CS)")
+                with col2:
+                    st.markdown("**Absolute**")
+                    st.markdown("{:.0f}".format(size_of_prize))
+                    st.markdown(qty_changed)
+                with col3:
+                    st.markdown("**%**")
+                    st.markdown("{:.0f}%".format(size_of_prize_percent * 100))
+                    st.markdown("{:.0f}%".format(qty_changed_percent * 100))
 
-        result = pd.DataFrame(
-            {
-                "Index": ["Unit Cost (RMB/PT)", "Spending (RMB)", "Loss (RMB)", "Saving (RMB)", "Saving (%)", "Truck Type", "VFR", "WFR", "Heavy/Light Mix(CBM/Ton)", "Quantity (CS)", "SLOG Impact"],
-                "Before Shaping": ["{:.1f}".format(base_unit_cost), "{:.0f}".format(base_cost), "{:.0f}".format(base_loss), "N/A", "N/A", base_truck_selected, "{:.0f}%".format(base_vfr * 100), "{:.0f}%".format(base_wfr * 100), "{:.1f}".format(base_mix), initial_order_qty, base_slog],
-                "After Shaping": ["{:.1f}".format(unit_cost), "{:.0f}".format(cost), "{:.0f}".format(loss), "{:.0f}".format(saving), "{:.0f}%".format(saving_percent * 100), truck_selected, "{:.0f}%".format(vfr * 100), "{:.0f}%".format(wfr * 100), "{:.1f}".format(mix), order_qty, slog],
-                "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "0", "N/A", "N/A", ideal_truck_type, "{:.0f}%".format(ideal_vfr * 100), "{:.0f}%".format(ideal_wfr * 100), "{:.1f}".format(ideal_mix), "N/A", "N/A"]
-            }
-        )
-
-        result_grid_options = {
-            "columnDefs": [
+            result = pd.DataFrame(
                 {
-                    "headerName": "Index",
-                    "field": "Index",
-                    "cellStyle": {
-                        "text-align": "center",
-                        "fontWeight": "bold"
-                    },
-                    "sortable": False,
-                    "pinned": "left"
-                },
-                {
-                    "headerName": "Before Shaping",
-                    "field": "Before Shaping",
-                    "cellStyle": {
-                        "text-align": "center"
-                    },
-                    "sortable": False
-                },
-                {
-                    "headerName": "After Shaping",
-                    "field": "After Shaping",
-                    "cellStyle": {
-                        "text-align": "center"
-                    },
-                    "sortable": False
-                },
-                {
-                    "headerName": "Ideal State",
-                    "field": "Ideal State",
-                    "cellStyle": {
-                        "text-align": "center"
-                    },
-                    "sortable": False
+                    "Index": ["Unit Cost (RMB/PT)", "Spending (RMB)", "Loss (RMB)", "Saving (RMB)", "Saving (%)", "Truck Type", "VFR", "WFR", "Heavy/Light Mix(CBM/Ton)", "Quantity (CS)", "SLOG Impact"],
+                    "Before Shaping": ["{:.1f}".format(base_unit_cost), "{:.0f}".format(base_cost), "{:.0f}".format(base_loss), "N/A", "N/A", base_truck_selected, "{:.0f}%".format(base_vfr * 100), "{:.0f}%".format(base_wfr * 100), "{:.1f}".format(base_mix), initial_order_qty, base_slog],
+                    "After Shaping": ["{:.1f}".format(unit_cost), "{:.0f}".format(cost), "{:.0f}".format(loss), "{:.0f}".format(saving), "{:.0f}%".format(saving_percent * 100), truck_selected, "{:.0f}%".format(vfr * 100), "{:.0f}%".format(wfr * 100), "{:.1f}".format(mix), order_qty, slog],
+                    "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "0", "N/A", "N/A", ideal_truck_type, "{:.0f}%".format(ideal_vfr * 100), "{:.0f}%".format(ideal_wfr * 100), "{:.1f}".format(ideal_mix), "N/A", "N/A"]
                 }
-            ]
-        }
+            )
 
-        if "实际采纳数量" in order_data.columns.tolist():
-            if order_data["实际采纳数量"].sum() > 0:
-                result = pd.DataFrame(
+            result_grid_options = {
+                "columnDefs": [
                     {
-                        "Index": ["Unit Cost (RMB/PT)", "Spending (RMB)", "Loss (RMB)", "Saving (RMB)", "Saving (%)",
-                                  "Truck Type", "VFR", "WFR", "Heavy/Light Mix(CBM/Ton)", "Quantity (CS)",
-                                  "SLOG Impact"],
-                        "Before Shaping": ["{:.1f}".format(base_unit_cost), "{:.0f}".format(base_cost),
-                                           "{:.0f}".format(base_loss), "N/A", "N/A", base_truck_selected,
-                                           "{:.0f}%".format(base_vfr * 100), "{:.0f}%".format(base_wfr * 100),
-                                           "{:.1f}".format(base_mix), initial_order_qty, base_slog],
-                        "Proposed Shaping": ["{:.1f}".format(unit_cost), "{:.0f}".format(cost), "{:.0f}".format(loss),
-                                             "{:.0f}".format(saving), "{:.0f}%".format(saving_percent * 100),
-                                             truck_selected, "{:.0f}%".format(vfr * 100), "{:.0f}%".format(wfr * 100),
-                                             "{:.1f}".format(mix), order_qty, slog],
-                        "Adopt Shaping": ["{:.1f}".format(adopt_unit_cost), "{:.0f}".format(adopt_cost),
-                                          "{:.0f}".format(adopt_loss), "N/A", "N/A", adopt_truck_selected,
-                                          "{:.0f}%".format(adopt_vfr * 100), "{:.0f}%".format(adopt_wfr * 100),
-                                          "{:.1f}".format(adopt_mix), adopt_order_qty, adopt_slog],
-                        "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "0", "N/A", "N/A", ideal_truck_type,
-                                        "{:.0f}%".format(ideal_vfr * 100), "{:.0f}%".format(ideal_wfr * 100),
-                                        "{:.1f}".format(ideal_mix), "N/A", "N/A"]
+                        "headerName": "Index",
+                        "field": "Index",
+                        "cellStyle": {
+                            "text-align": "center",
+                            "fontWeight": "bold"
+                        },
+                        "sortable": False,
+                        "pinned": "left"
+                    },
+                    {
+                        "headerName": "Before Shaping",
+                        "field": "Before Shaping",
+                        "cellStyle": {
+                            "text-align": "center"
+                        },
+                        "sortable": False
+                    },
+                    {
+                        "headerName": "After Shaping",
+                        "field": "After Shaping",
+                        "cellStyle": {
+                            "text-align": "center"
+                        },
+                        "sortable": False
+                    },
+                    {
+                        "headerName": "Ideal State",
+                        "field": "Ideal State",
+                        "cellStyle": {
+                            "text-align": "center"
+                        },
+                        "sortable": False
                     }
-                )
+                ]
+            }
 
-                result_grid_options = {
-                    "columnDefs": [
+            if "实际采纳数量" in order_data.columns.tolist():
+                if order_data["实际采纳数量"].sum() > 0:
+                    result = pd.DataFrame(
                         {
-                            "headerName": "Index",
-                            "field": "Index",
-                            "cellStyle": {
-                                "text-align": "center",
-                                "fontWeight": "bold"
-                            },
-                            "sortable": False,
-                            "pinned": "left"
-                        },
-                        {
-                            "headerName": "Before Shaping",
-                            "field": "Before Shaping",
-                            "cellStyle": {
-                                "text-align": "center"
-                            },
-                            "sortable": False
-                        },
-                        {
-                            "headerName": "Proposed Shaping",
-                            "field": "Proposed Shaping",
-                            "cellStyle": {
-                                "text-align": "center"
-                            },
-                            "sortable": False
-                        },
-                        {
-                            "headerName": "Adopt Shaping",
-                            "field": "Adopt Shaping",
-                            "cellStyle": {
-                                "text-align": "center"
-                            },
-                            "sortable": False
-                        },
-                        {
-                            "headerName": "Ideal State",
-                            "field": "Ideal State",
-                            "cellStyle": {
-                                "text-align": "center"
-                            },
-                            "sortable": False
+                            "Index": ["Unit Cost (RMB/PT)", "Spending (RMB)", "Loss (RMB)", "Saving (RMB)", "Saving (%)",
+                                      "Truck Type", "VFR", "WFR", "Heavy/Light Mix(CBM/Ton)", "Quantity (CS)",
+                                      "SLOG Impact"],
+                            "Before Shaping": ["{:.1f}".format(base_unit_cost), "{:.0f}".format(base_cost),
+                                               "{:.0f}".format(base_loss), "N/A", "N/A", base_truck_selected,
+                                               "{:.0f}%".format(base_vfr * 100), "{:.0f}%".format(base_wfr * 100),
+                                               "{:.1f}".format(base_mix), initial_order_qty, base_slog],
+                            "Proposed Shaping": ["{:.1f}".format(unit_cost), "{:.0f}".format(cost), "{:.0f}".format(loss),
+                                                 "{:.0f}".format(saving), "{:.0f}%".format(saving_percent * 100),
+                                                 truck_selected, "{:.0f}%".format(vfr * 100), "{:.0f}%".format(wfr * 100),
+                                                 "{:.1f}".format(mix), order_qty, slog],
+                            "Adopt Shaping": ["{:.1f}".format(adopt_unit_cost), "{:.0f}".format(adopt_cost),
+                                              "{:.0f}".format(adopt_loss), "N/A", "N/A", adopt_truck_selected,
+                                              "{:.0f}%".format(adopt_vfr * 100), "{:.0f}%".format(adopt_wfr * 100),
+                                              "{:.1f}".format(adopt_mix), adopt_order_qty, adopt_slog],
+                            "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "0", "N/A", "N/A", ideal_truck_type,
+                                            "{:.0f}%".format(ideal_vfr * 100), "{:.0f}%".format(ideal_wfr * 100),
+                                            "{:.1f}".format(ideal_mix), "N/A", "N/A"]
                         }
-                    ]
+                    )
+
+                    result_grid_options = {
+                        "columnDefs": [
+                            {
+                                "headerName": "Index",
+                                "field": "Index",
+                                "cellStyle": {
+                                    "text-align": "center",
+                                    "fontWeight": "bold"
+                                },
+                                "sortable": False,
+                                "pinned": "left"
+                            },
+                            {
+                                "headerName": "Before Shaping",
+                                "field": "Before Shaping",
+                                "cellStyle": {
+                                    "text-align": "center"
+                                },
+                                "sortable": False
+                            },
+                            {
+                                "headerName": "Proposed Shaping",
+                                "field": "Proposed Shaping",
+                                "cellStyle": {
+                                    "text-align": "center"
+                                },
+                                "sortable": False
+                            },
+                            {
+                                "headerName": "Adopt Shaping",
+                                "field": "Adopt Shaping",
+                                "cellStyle": {
+                                    "text-align": "center"
+                                },
+                                "sortable": False
+                            },
+                            {
+                                "headerName": "Ideal State",
+                                "field": "Ideal State",
+                                "cellStyle": {
+                                    "text-align": "center"
+                                },
+                                "sortable": False
+                            }
+                        ]
+                    }
+
+            custom_css = {
+                ".ag-header-cell-label": {
+                    "justify-content": "center"
                 }
-
-        custom_css = {
-            ".ag-header-cell-label": {
-                "justify-content": "center"
             }
-        }
 
-        st.info("Overall Result")
-        AgGrid(
-            result,
-            gridOptions=result_grid_options,
-            columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
-            fit_columns_on_grid_load=True,
-            theme="alpine",
-            custom_css=custom_css
-        )
+            st.info("Overall Result")
+            AgGrid(
+                result,
+                gridOptions=result_grid_options,
+                # columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
+                columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
+                fit_columns_on_grid_load=True,
+                theme="alpine",
+                custom_css=custom_css
+            )
 
-        filler = pd.DataFrame(
-            {
-                "Category": category_list,
-                "SKU Number": material_list,
-                "SKU Quantity Limit (-MIN CS, +MAX CS)": ["(" + str(min_qty) + ", +" + str(max_qty) + ")" for min_qty, max_qty in zip(min_qty, max_qty)],
-                "Reco Quantity (CS)": np.where(filler_qty <= 0, filler_qty, ["+" + str(qty) for qty in filler_qty])
-            }
-        )
-
-        filler_grid_options = {
-            "columnDefs": [
+            filler = pd.DataFrame(
                 {
-                    "headerName": "Category",
-                    "field": "Category",
-                    "filter": "agTextColumnFilter",
-                    # "suppressSizeToFit": True,
-                    "cellStyle": {
-                        "text-align": "center"
-                    }
-                },
-                {
-                    "headerName": "SKU Number",
-                    "field": "SKU Number",
-                    "filter": "agTextColumnFilter",
-                    # "suppressSizeToFit": True,
-                    "cellStyle": {
-                        "text-align": "center"
-                    }
-                },
-                {
-                    "headerName": "SKU Quantity Limit (-MIN CS, +MAX CS)",
-                    "field": "SKU Quantity Limit (-MIN CS, +MAX CS)",
-                    "filter": "agTextColumnFilter",
-                    # "suppressSizeToFit": True,
-                    "cellStyle": {
-                        "text-align": "center"
-                    }
-                },
-                {
-                    "headerName": "Reco Quantity (CS)",
-                    "field": "Reco Quantity (CS)",
-                    "filter": "agNumberColumnFilter",
-                    # "suppressSizeToFit": True,
-                    "cellStyle": {
-                        "text-align": "center"
-                    }
+                    "Category": category_list,
+                    "SKU Number": material_list,
+                    "SKU Quantity Limit (-MIN CS, +MAX CS)": ["(" + str(min_qty) + ", +" + str(max_qty) + ")" for min_qty, max_qty in zip(min_qty, max_qty)],
+                    "Reco Quantity (CS)": np.where(filler_qty <= 0, filler_qty, ["+" + str(qty) for qty in filler_qty])
                 }
-            ]
-        }
+            )
 
-        st.info("Filler SKU Recommendation")
-        AgGrid(
-            filler,
-            gridOptions=filler_grid_options,
-            columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
-            fit_columns_on_grid_load=True,
-            theme="alpine",
-            custom_css=custom_css
-        )
+            filler_grid_options = {
+                "columnDefs": [
+                    {
+                        "headerName": "Category",
+                        "field": "Category",
+                        "filter": "agTextColumnFilter",
+                        # "suppressSizeToFit": True,
+                        "cellStyle": {
+                            "text-align": "center"
+                        }
+                    },
+                    {
+                        "headerName": "SKU Number",
+                        "field": "SKU Number",
+                        "filter": "agTextColumnFilter",
+                        # "suppressSizeToFit": True,
+                        "cellStyle": {
+                            "text-align": "center"
+                        }
+                    },
+                    {
+                        "headerName": "SKU Quantity Limit (-MIN CS, +MAX CS)",
+                        "field": "SKU Quantity Limit (-MIN CS, +MAX CS)",
+                        "filter": "agTextColumnFilter",
+                        # "suppressSizeToFit": True,
+                        "cellStyle": {
+                            "text-align": "center"
+                        }
+                    },
+                    {
+                        "headerName": "Reco Quantity (CS)",
+                        "field": "Reco Quantity (CS)",
+                        "filter": "agNumberColumnFilter",
+                        # "suppressSizeToFit": True,
+                        "cellStyle": {
+                            "text-align": "center"
+                        }
+                    }
+                ]
+            }
 
+            st.info("Filler SKU Recommendation")
+            AgGrid(
+                filler,
+                gridOptions=filler_grid_options,
+                columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
+                fit_columns_on_grid_load=True,
+                theme="alpine",
+                custom_css=custom_css
+            )
+        label += 1
+
+    st.divider()
+    st.info("Recommendation Data Download")
     selected_order_data["建议调整数量"] = 0
     not_selected_order_data["建议调整数量"] = np.nan
 
@@ -725,12 +744,13 @@ if len(uploaded_files) > 0:
                 source_not_selected_order_data = not_selected_order_data[not_selected_order_data["Source"] == source]
                 output_data = pd.concat([source_selected_order_data, source_not_selected_order_data])
                 index = output_data.columns.tolist().index("采购需求数量*")
-                if ("PCC" in source) or ("FHC" in source):
+                if "横版" in source:
                     output_data.insert(index + 1, "北京_建议调整数量", output_data.pop("建议调整数量"))
                     if "北京_实际采纳数量" not in output_data.columns.tolist():
                         output_data.insert(index + 2, "北京_实际采纳数量", np.nan)
                     output_data = output_data.rename(columns={"京东码": "商品编码", "采购需求数量*": "北京"})
                     output_data.drop(["配送中心*(格式：北京,上海,广州)", "material_num", "箱规⑥", "CS", "max_filler_CS", "category", "volume_cube", "weight_ton", "Region", "shipto", "Source"], axis=1, inplace=True)
+                    source = source.rstrip("_横版")
                 else:
                     index = output_data.columns.tolist().index("采购需求数量*")
                     output_data.insert(index + 1, "建议调整数量", output_data.pop("建议调整数量"))
@@ -738,6 +758,7 @@ if len(uploaded_files) > 0:
                         output_data.insert(index + 2, "实际采纳数量", np.nan)
                     output_data = output_data.rename(columns={"京东码": "sku*"})
                     output_data.drop(["material_num", "箱规⑥", "CS", "max_filler_CS", "category", "volume_cube", "weight_ton", "Region", "shipto", "Source"], axis=1, inplace=True)
+                    source = source.rstrip("_竖版")
 
                 output = BytesIO()
                 with pd.ExcelWriter(output) as writer:
