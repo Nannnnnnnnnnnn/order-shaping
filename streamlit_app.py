@@ -3,6 +3,7 @@ from shareplum import Site
 from shareplum import Office365
 from shareplum.site import Version
 import pandas as pd
+import xlrd
 import numpy as np
 import gurobipy as grb
 from st_aggrid import AgGrid, ColumnsAutoSizeMode
@@ -67,7 +68,7 @@ sku_master = pd.read_excel("sku_master_temp.xlsx", dtype={"material_num": str, "
 
 
 # File Uploading
-uploaded_files = st.file_uploader(label="Please upload the order and truck type data file:", type="xlsx", accept_multiple_files=True)
+uploaded_files = st.file_uploader(label="Please upload the order and truck type data file:", type=["xlsx", "xls"], accept_multiple_files=True)
 original_ao_order_data = pd.DataFrame()
 order_data = pd.DataFrame()
 # selected_shipto = ["2003213268"]
