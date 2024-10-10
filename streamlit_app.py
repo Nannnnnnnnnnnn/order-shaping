@@ -73,7 +73,7 @@ order_data = pd.DataFrame()
 # selected_shipto = ["2003213268"]
 selected_shipto = ["2003213268", "2002921387"]
 filler_rate = 1
-st.write("AAA")
+
 if len(uploaded_files) > 0:
     for uploaded_file in uploaded_files:
         if "AO" in uploaded_file.name:
@@ -97,7 +97,6 @@ if len(uploaded_files) > 0:
             order_data_split["max_filler_CS"] = order_data_split["采购需求数量*"] / order_data_split["箱规⑥"] * filler_rate
             order_data_split = order_data_split.rename(columns={"宝洁码": "material_num"})
             order_data_split = pd.merge(order_data_split, sku_master.loc[:, ["material_num", "category", "volume_cube", "weight_ton"]], how="left", on="material_num")
-            st.write(order_data_split)
             order_data_split["Region"] = order_data_split["配送中心*(格式：北京,上海,广州)"]
             category = np.array(order_data_split[order_data_split["category"].notnull()]["category"])
             source_shipto_city_data = shipto_city_data[shipto_city_data["品类"].str.startswith(category[0] + "/", na=False) | shipto_city_data["品类"].str.contains("/" + category[0], na=False)]
