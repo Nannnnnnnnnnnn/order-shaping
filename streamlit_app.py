@@ -449,9 +449,9 @@ if len(uploaded_files) > 0:
 
         if "实际采纳数量" in order_data.columns.tolist():
             if order_data["实际采纳数量"].sum() > 0:
-                weight = order_data["weight_ton"] * order_data["实际采纳数量"] / order_data["箱规⑥"]
-                volume = order_data["volume_cube"] * order_data["实际采纳数量"] / order_data["箱规⑥"]
-                qty = order_data["实际采纳数量"] / order_data["箱规⑥"]
+                weight = order_data["weight_ton"] * (order_data["采购需求数量*"] + order_data["实际采纳数量"]) / order_data["箱规⑥"]
+                volume = order_data["volume_cube"] * (order_data["采购需求数量*"] + order_data["实际采纳数量"]) / order_data["箱规⑥"]
+                qty = (order_data["采购需求数量*"] + order_data["实际采纳数量"]) / order_data["箱规⑥"]
                 ao_weight = ao_order_data["weight_ton"] * ao_order_data["CS"]
                 ao_volume = ao_order_data["volume_cube"] * ao_order_data["CS"]
                 ao_qty = ao_order_data["CS"]
