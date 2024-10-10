@@ -661,7 +661,7 @@ if exist_order_flag == "Y":
                 {
                     "Category": category_list,
                     "SKU Number": material_list,
-                    "SKU Quantity Limit (-MIN CS, +MAX CS)": ["(" + str(min_qty) + ", +" + str(max_qty) + ")" for min_qty, max_qty in zip(min_qty, max_qty)],
+                    "SKU Quantity Limit (-MIN CS, +MAX CS)": ["(" + "{:.1f}".format(min_qty) + ", +" + "{:.1f}".format(max_qty) + ")" for min_qty, max_qty in zip(min_qty, max_qty)],
                     "Reco Quantity (CS)": np.where(filler_qty <= 0, filler_qty, ["+" + str(qty) for qty in filler_qty])
                 }
             )
