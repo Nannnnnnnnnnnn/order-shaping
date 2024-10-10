@@ -73,6 +73,7 @@ order_data = pd.DataFrame()
 # selected_shipto = ["2003213268"]
 selected_shipto = ["2003213268", "2002921387"]
 filler_rate = 1
+exist_order_flag = "N"
 
 if len(uploaded_files) > 0:
     for uploaded_file in uploaded_files:
@@ -83,6 +84,7 @@ if len(uploaded_files) > 0:
             original_ao_order_data_split = pd.merge(original_ao_order_data_split, sku_master.loc[:, ["material_num", "category", "volume_cube", "weight_ton"]], how="left", on="material_num")
             original_ao_order_data = pd.concat([original_ao_order_data, original_ao_order_data_split])
         else:
+            exist_order_flag = "Y"
             if True in data_split.columns.str.contains("配送中心"):
                 city_col_name = list(data_split.columns[data_split.columns.str.contains("配送中心")])[0]
                 original_order_data_split = data_split.astype({"sku*": str, city_col_name: str})
@@ -104,20 +106,25 @@ if len(uploaded_files) > 0:
             source_shipto_city_data = shipto_city_data[shipto_city_data["品类"].str.startswith(category[0] + "/", na=False) | shipto_city_data["品类"].str.contains("/" + category[0], na=False)]
             order_data_split = pd.merge(order_data_split, source_shipto_city_data.loc[:, ["Region", "shipto"]], how="left", on="Region")
             order_data = pd.concat([order_data, order_data_split])
-    upload_source_list = list(set(list(order_data["Source"])))
-    not_selected_shipto = list(set(list(order_data["shipto"])) - set(selected_shipto))
-    not_selected_order_data = order_data[(order_data["shipto"].isin(not_selected_shipto)) & (order_data["采购需求数量*"] == 0)]
-    selected_order_data = order_data[(order_data["shipto"].isin(selected_shipto)) & (order_data["采购需求数量*"] != 0)]
-    download_source_list = list(set(list(selected_order_data["Source"])))
-    missing_sku_list = ", ".join("{0}".format(sku) for sku in list(selected_order_data[(selected_order_data["volume_cube"].isnull()) | (selected_order_data["weight_ton"].isnull())]["京东码"]))
-    if len(missing_sku_list) > 0:
-        st.warning("**Warning:**" + " Missing weight/volume master data of SKU " + missing_sku_list + " for the order data, which will be excluded from the optimization.")
-    if len(original_ao_order_data) > 0:
-        not_selected_ao_order_data = original_ao_order_data[(original_ao_order_data["shipto"].isin(not_selected_shipto)) & (original_ao_order_data["CS"] == 0)]
-        selected_ao_order_data = original_ao_order_data[(original_ao_order_data["shipto"].isin(selected_shipto)) & (original_ao_order_data["CS"] != 0)]
-        missing_ao_sku_list = ", ".join("{0}".format(sku) for sku in list(selected_ao_order_data[(selected_ao_order_data["volume_cube"].isnull()) | (selected_ao_order_data["weight_ton"].isnull())]["material_num"]))
-        if len(missing_ao_sku_list) > 0:
-            st.warning("**Warning:**" + " Missing weight/volume master data of SKU " + missing_ao_sku_list + " for the AO order data, which will be excluded from the optimization.")
+    if exist_order_flag == "Y":
+        upload_source_list = list(set(list(order_data["Source"])))
+        not_selected_shipto = list(set(list(order_data["shipto"])) - set(selected_shipto))
+        not_selected_order_data = order_data[(order_data["shipto"].isin(not_selected_shipto)) & (order_data["采购需求数量*"] == 0)]
+        selected_order_data = order_data[(order_data["shipto"].isin(selected_shipto)) & (order_data["采购需求数量*"] != 0)]
+        download_source_list = list(set(list(selected_order_data["Source"])))
+        missing_sku_list = ", ".join("{0}".format(sku) for sku in list(selected_order_data[(selected_order_data["volume_cube"].isnull()) | (selected_order_data["weight_ton"].isnull())]["京东码"]))
+        if len(missing_sku_list) > 0:
+            st.warning("**Warning:**" + " Missing weight/volume master data of SKU " + missing_sku_list + " for the order data, which will be excluded from the optimization.")
+        if len(original_ao_order_data) > 0:
+            not_selected_ao_order_data = original_ao_order_data[(original_ao_order_data["shipto"].isin(not_selected_shipto)) & (original_ao_order_data["CS"] == 0)]
+            selected_ao_order_data = original_ao_order_data[(original_ao_order_data["shipto"].isin(selected_shipto)) & (original_ao_order_data["CS"] != 0)]
+            missing_ao_sku_list = ", ".join("{0}".format(sku) for sku in list(selected_ao_order_data[(selected_ao_order_data["volume_cube"].isnull()) | (selected_ao_order_data["weight_ton"].isnull())]["material_num"]))
+            if len(missing_ao_sku_list) > 0:
+                st.warning("**Warning:**" + " Missing weight/volume master data of SKU " + missing_ao_sku_list + " for the AO order data, which will be excluded from the optimization.")
+    else:
+        st.warning("**Warning:**" + " No order data uploaded (excluding AO order data), the optimization terminated.")
+
+
 
 
 # Calculation Function
@@ -332,12 +339,12 @@ def order_shaping(ao_order_data, order_data, truck_data):
         priority_param = np.zeros(len(order_data["material_num"]))
 
     truck_capacity_weight = np.array(truck_data["Weight Capacity"])
-    truck_capacity_volume = np.array(truck_data["Volume Capacity"])
+    truck_capacity_volume = np.array(truck_data["Max Load Volume"])
     truck_cost = np.array(truck_data["Base Charge"])
 
     ideal_truck_type = np.array(truck_data[truck_data["Optimal Truck Type"] == "Y"]["Truck Type"])
     ideal_truck_capacity_weight = np.array(truck_data[truck_data["Optimal Truck Type"] == "Y"]["Weight Capacity"])
-    ideal_truck_capacity_volume = np.array(truck_data[truck_data["Optimal Truck Type"] == "Y"]["Volume Capacity"])
+    ideal_truck_capacity_volume = np.array(truck_data[truck_data["Optimal Truck Type"] == "Y"]["Max Load Volume"])
     ideal_truck_cost = np.array(truck_data[truck_data["Optimal Truck Type"] == "Y"]["Base Charge"])
 
     # Calculate
@@ -359,7 +366,7 @@ def order_shaping(ao_order_data, order_data, truck_data):
 
 
 # Calculation Execution and Display Result
-if len(uploaded_files) > 0:
+if exist_order_flag == "Y":
     order_data_result = pd.DataFrame()
     shipto_list = ["Ship-to: " + shipto for shipto in list(selected_order_data["shipto"].unique())]
     shipto_num = len(shipto_list)
@@ -448,19 +455,19 @@ if len(uploaded_files) > 0:
             slog = "0%"
 
         if "实际采纳数量" in order_data.columns.tolist():
-            if order_data["实际采纳数量"].sum() > 0:
-                weight = order_data["weight_ton"] * (order_data["采购需求数量*"] + order_data["实际采纳数量"]) / order_data["箱规⑥"]
-                volume = order_data["volume_cube"] * (order_data["采购需求数量*"] + order_data["实际采纳数量"]) / order_data["箱规⑥"]
-                qty = (order_data["采购需求数量*"] + order_data["实际采纳数量"]) / order_data["箱规⑥"]
-                ao_weight = ao_order_data["weight_ton"] * ao_order_data["CS"]
-                ao_volume = ao_order_data["volume_cube"] * ao_order_data["CS"]
+            if order_data["实际采纳数量"] is not np.nan:
+                qty = (order_data["采购需求数量*"] + order_data["实际采纳数量"].fillna(0)) / order_data["箱规⑥"]
+                weight = order_data["weight_ton"] * qty
+                volume = order_data["volume_cube"] * qty
                 ao_qty = ao_order_data["CS"]
+                ao_weight = ao_order_data["weight_ton"] * ao_qty
+                ao_volume = ao_order_data["volume_cube"] * ao_qty
                 initial_order_weight = ao_weight.sum() + weight.sum()
                 initial_order_volume = ao_volume.sum() + volume.sum()
                 adopt_order_qty = ao_qty.sum() + qty.sum()
 
                 truck_capacity_weight = np.array(truck_data["Weight Capacity"])
-                truck_capacity_volume = np.array(truck_data["Volume Capacity"])
+                truck_capacity_volume = np.array(truck_data["Max Load Volume"])
                 truck_cost = np.array(truck_data["Base Charge"])
 
                 adopt_truck_qty, adopt_cost, adopt_unit_cost, adopt_pt, adopt_wfr, adopt_vfr, adopt_mix = baseline(
@@ -561,7 +568,7 @@ if len(uploaded_files) > 0:
             }
 
             if "实际采纳数量" in order_data.columns.tolist():
-                if order_data["实际采纳数量"].sum() > 0:
+                if order_data["实际采纳数量"] is not np.nan:
                     result = pd.DataFrame(
                         {
                             "Index": ["Unit Cost (RMB/PT)", "Spending (RMB)", "Loss (RMB)", "Saving (RMB)", "Saving (%)",
