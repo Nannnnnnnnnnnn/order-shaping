@@ -76,20 +76,20 @@ filler_rate = 1
 
 if len(uploaded_files) > 0:
     for uploaded_file in uploaded_files:
-        if "AO" in uploaded_file.name:
-            original_ao_order_data_split = pd.read_excel(uploaded_file, dtype={"Ship to编码": str, "宝洁八位码": str})
+        data_split = pd.read_excel(uploaded_file)
+        if True in data_split.columns.str.contains("POA回告数量"):
+            original_ao_order_data_split = data_split.astype({"Ship to编码": str, "宝洁八位码": str})
             original_ao_order_data_split = original_ao_order_data_split.rename(columns={"Ship to编码": "shipto", "宝洁八位码": "material_num", "POA回告数量（箱数）": "CS"})
             original_ao_order_data_split = pd.merge(original_ao_order_data_split, sku_master.loc[:, ["material_num", "category", "volume_cube", "weight_ton"]], how="left", on="material_num")
             original_ao_order_data = pd.concat([original_ao_order_data, original_ao_order_data_split])
         else:
-            original_order_data_split = pd.read_excel(uploaded_file)
-            if True in original_order_data_split.columns.str.contains("配送中心"):
-                city_col_name = list(original_order_data_split.columns[original_order_data_split.columns.str.contains("配送中心")])[0]
-                original_order_data_split = original_order_data_split.astype({"sku*": str, city_col_name: str})
+            if True in data_split.columns.str.contains("配送中心"):
+                city_col_name = list(data_split.columns[data_split.columns.str.contains("配送中心")])[0]
+                original_order_data_split = data_split.astype({"sku*": str, city_col_name: str})
                 order_data_split = original_order_data_split.rename(columns={"sku*": "京东码", city_col_name: "配送中心*(格式：北京,上海,广州)"})
                 order_data_split["Source"] = uploaded_file.name + "_竖版"
             else:
-                original_order_data_split = original_order_data_split.astype({"商品编码": str})
+                original_order_data_split = data_split.astype({"商品编码": str})
                 # order_data_split = pd.melt(original_order_data_split, id_vars="商品编码", value_vars=["北京"], var_name="配送中心*(格式：北京,上海,广州)", value_name="采购需求数量*")
                 order_data_split = original_order_data_split.rename(columns={"商品编码": "京东码", "北京": "采购需求数量*"})
                 order_data_split["配送中心*(格式：北京,上海,广州)"] = "北京"
