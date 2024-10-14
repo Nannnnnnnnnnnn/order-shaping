@@ -73,9 +73,15 @@ original_ao_order_data = pd.DataFrame()
 order_data = pd.DataFrame()
 # selected_shipto = ["2003213268"]
 selected_shipto = ["2003213268", "2002921387"]
-filler_rate = 1
 exist_order_flag = "N"
 
+
+# Rate Definition
+filler_rate = st.slider(label="Please select the filler rate (%):", min_value=0, max_value=100, value=10, step=1)
+filler_rate = filler_rate / 100
+
+
+# Data Initialization
 if len(uploaded_files) > 0:
     for uploaded_file in uploaded_files:
         data_split = pd.read_excel(uploaded_file)
@@ -387,6 +393,12 @@ if exist_order_flag == "Y":
             ao_order_data = pd.DataFrame()
         truck_data = truck_master[truck_master["Ship-to"] == shipto]
         ideal_truck_type_data = ideal_truck_type_master[ideal_truck_type_master["Ship-to"] == shipto]
+        index = ideal_truck_type_data.index.tolist()[0]
+        ideal_unit_cost = ideal_truck_type_data["Ideal Unit Cost"][index]
+        ideal_vfr = ideal_truck_type_data["Ideal VFR"][index]
+        ideal_wfr = ideal_truck_type_data["Ideal WFR"][index]
+        ideal_mix = ideal_truck_type_data["Ideal Mix"][index]
+        customer_name = ideal_truck_type_data["Customer Name"][index]
 
         truck_type = np.array(truck_data["Truck Type"])
         ideal_truck_type = np.array(truck_data[truck_data["Optimal Truck Type"] == "Y"]["Truck Type"])
@@ -401,13 +413,6 @@ if exist_order_flag == "Y":
         )
         order_data_result_split["shipto"] = shipto
         order_data_result = pd.concat([order_data_result, order_data_result_split])
-
-        index = ideal_truck_type_data.index.tolist()[0]
-        ideal_unit_cost = ideal_truck_type_data["Ideal Unit Cost"][index]
-        ideal_vfr = ideal_truck_type_data["Ideal VFR"][index]
-        ideal_wfr = ideal_truck_type_data["Ideal WFR"][index]
-        ideal_mix = ideal_truck_type_data["Ideal Mix"][index]
-        customer_name = ideal_truck_type_data["Customer Name"][index]
 
         base_loss = (ideal_unit_cost - base_unit_cost) * base_pt
         loss = (ideal_unit_cost - unit_cost) * pt
@@ -565,7 +570,8 @@ if exist_order_flag == "Y":
                         },
                         "sortable": False
                     }
-                ]
+                ],
+                "enableRangeSelection": True
             }
 
             if "实际采纳数量" in order_data.columns.tolist():
@@ -637,7 +643,8 @@ if exist_order_flag == "Y":
                                 },
                                 "sortable": False
                             }
-                        ]
+                        ],
+                        "enableRangeSelection": True
                     }
 
             custom_css = {
@@ -650,7 +657,6 @@ if exist_order_flag == "Y":
             AgGrid(
                 result,
                 gridOptions=result_grid_options,
-                # columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
                 columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
                 fit_columns_on_grid_load=True,
                 theme="alpine",
@@ -704,7 +710,8 @@ if exist_order_flag == "Y":
                             "text-align": "center"
                         }
                     }
-                ]
+                ],
+                "enableRangeSelection": True
             }
 
             st.info("Filler SKU Recommendation")
@@ -779,3 +786,4 @@ if exist_order_flag == "Y":
                 )
             else:
                 st.warning("**Warning:**" + "There is no order data within the testing scope in the file " + source)
+
