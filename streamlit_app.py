@@ -94,10 +94,12 @@ if len(uploaded_files) > 0:
             exist_order_flag = "Y"
             if True in data_split.columns.str.contains("配送中心"):
                 city_col_name = list(data_split.columns[data_split.columns.str.contains("配送中心")])[0]
+                data_split["sku*"] = data_split["sku*"].map("{:.0f}".format)
                 original_order_data_split = data_split.astype({"sku*": str, city_col_name: str})
                 order_data_split = original_order_data_split.rename(columns={"sku*": "京东码", city_col_name: "配送中心*(格式：北京,上海,广州)"})
                 order_data_split["Source"] = uploaded_file.name + "_竖版"
             else:
+                data_split["商品编码"] = data_split["商品编码"].map("{:.0f}".format)
                 original_order_data_split = data_split.astype({"商品编码": str})
                 # order_data_split = pd.melt(original_order_data_split, id_vars="商品编码", value_vars=["北京"], var_name="配送中心*(格式：北京,上海,广州)", value_name="采购需求数量*")
                 order_data_split = original_order_data_split.rename(columns={"商品编码": "京东码", "北京": "采购需求数量*"})
