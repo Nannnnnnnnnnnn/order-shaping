@@ -37,7 +37,7 @@ site = Site(sharepointSite, version=Version.v365, authcookie=authcookie)
 folder = site.Folder("Shared Documents/31. Order Loss Analysis/JD Full Truck Load/Order Shaping Tool/Input_MD")
 truck_master_filename = "Tariff.xlsx"
 ideal_truck_type_master_filename = "Ideal Truck Type.xlsx"
-sku_transfer_data_filename = "京东直供数据2024_0912.xlsx"
+sku_transfer_data_filename = "产品主数据.xlsx"
 shipto_city_data_filename = "JD B2C 线路明细.xlsx"
 sku_master_filename = "SKU主数据.xlsx"
 
@@ -73,6 +73,7 @@ original_ao_order_data = pd.DataFrame()
 order_data = pd.DataFrame()
 # selected_shipto = ["2003213268"]
 selected_shipto = ["2003213268", "2002921387"]
+selected_category = ["BC", "FHC", "HC", "PCC"]
 exist_order_flag = "N"
 
 
@@ -105,35 +106,42 @@ if len(uploaded_files) > 0:
                 order_data_split = original_order_data_split.rename(columns={"商品编码": "京东码", "北京": "采购需求数量*"})
                 order_data_split["配送中心*(格式：北京,上海,广州)"] = "北京"
                 order_data_split["Source"] = uploaded_file.name + "_横版"
-            order_data_split = pd.merge(order_data_split, sku_transfer_data.loc[:, ["京东码", "宝洁码", "箱规⑥"]], how="left", on="京东码")
-            order_data_split["CS"] = order_data_split["采购需求数量*"] / order_data_split["箱规⑥"]
-            order_data_split["max_filler_CS"] = order_data_split["采购需求数量*"] / order_data_split["箱规⑥"] * filler_rate
+            sku_data = pd.merge(sku_transfer_data.loc[:, ["京东码", "宝洁码", "箱规"]], sku_master.loc[:, ["material_num", "category", "volume_cube", "weight_ton"]], how="outer", left_on="宝洁码", right_on="material_num")
+            sku_data = sku_data[(sku_data["京东码"].notnull()) & (sku_data["material_num"].notnull())]
+            sku_data.drop_duplicates(subset=["京东码"], inplace=True)
+            order_data_split = pd.merge(order_data_split, sku_data.loc[:, ["京东码", "宝洁码", "箱规", "category", "volume_cube", "weight_ton"]], how="left", on="京东码")
+            order_data_split["CS"] = order_data_split["采购需求数量*"] / order_data_split["箱规"]
+            order_data_split["max_filler_CS"] = order_data_split["采购需求数量*"] / order_data_split["箱规"] * filler_rate
             order_data_split = order_data_split.rename(columns={"宝洁码": "material_num"})
-            order_data_split = pd.merge(order_data_split, sku_master.loc[:, ["material_num", "category", "volume_cube", "weight_ton"]], how="left", on="material_num")
             order_data_split["Region"] = order_data_split["配送中心*(格式：北京,上海,广州)"]
-            category = np.array(order_data_split[order_data_split["category"].notnull()]["category"])
-            source_shipto_city_data = shipto_city_data[shipto_city_data["品类"].str.startswith(category[0] + "/", na=False) | shipto_city_data["品类"].str.contains("/" + category[0], na=False)]
-            order_data_split = pd.merge(order_data_split, source_shipto_city_data.loc[:, ["Region", "shipto"]], how="left", on="Region")
+            if any(uploaded_file.name.startswith(file_category := category) for category in selected_category):
+                order_data_split["category"] = file_category
+                source_shipto_city_data = shipto_city_data[shipto_city_data["品类"].str.startswith(file_category + "/", na=False) | shipto_city_data["品类"].str.contains("/" + file_category, na=False)]
+                order_data_split = pd.merge(order_data_split, source_shipto_city_data.loc[:, ["Region", "shipto"]], how="left", on="Region")
+            else:
+                st.warning("**Warning:**" + " The name(s) of the uploaded order data file(s) should **_start(s) with_** the category short name, e.g. \"FHC-周转单-8.26-168w\". Please check the name(s) and upload the file(s) again.")
+                st.stop()
             order_data = pd.concat([order_data, order_data_split])
     if exist_order_flag == "Y":
         upload_source_list = list(set(list(order_data["Source"])))
         not_selected_shipto = list(set(list(order_data["shipto"])) - set(selected_shipto))
-        not_selected_order_data = order_data[(order_data["shipto"].isin(not_selected_shipto)) & (order_data["采购需求数量*"] == 0)]
+        not_selected_order_data = order_data[(order_data["shipto"].isin(not_selected_shipto)) | (order_data["采购需求数量*"] == 0)]
         selected_order_data = order_data[(order_data["shipto"].isin(selected_shipto)) & (order_data["采购需求数量*"] != 0)]
         download_source_list = list(set(list(selected_order_data["Source"])))
-        missing_sku_list = ", ".join("{0}".format(sku) for sku in list(selected_order_data[(selected_order_data["volume_cube"].isnull()) | (selected_order_data["weight_ton"].isnull())]["京东码"]))
-        if len(missing_sku_list) > 0:
-            st.warning("**Warning:**" + " Missing weight/volume master data of SKU " + missing_sku_list + " for the order data, which will be excluded from the optimization.")
+        missing_sku_material_list = ", ".join("{0}".format(sku) for sku in list(selected_order_data[selected_order_data["material_num"].isnull()]["京东码"]))
+        missing_sku_info_list = ", ".join("{0}".format(sku) for sku in list(selected_order_data[(selected_order_data["material_num"].notnull()) & ((selected_order_data["volume_cube"].isnull()) | (selected_order_data["weight_ton"].isnull()))]["京东码"]))
+        if len(missing_sku_material_list) > 0:
+            st.warning("**Warning:**" + " Missing material number master data of SKU " + missing_sku_material_list + " for the order data, which will be excluded from the optimization.")
+        if len(missing_sku_info_list) > 0:
+            st.warning("**Warning:**" + " Missing category/weight/volume master data of SKU " + missing_sku_info_list + " for the order data, which will be excluded from the optimization.")
         if len(original_ao_order_data) > 0:
             not_selected_ao_order_data = original_ao_order_data[(original_ao_order_data["shipto"].isin(not_selected_shipto)) & (original_ao_order_data["CS"] == 0)]
             selected_ao_order_data = original_ao_order_data[(original_ao_order_data["shipto"].isin(selected_shipto)) & (original_ao_order_data["CS"] != 0)]
             missing_ao_sku_list = ", ".join("{0}".format(sku) for sku in list(selected_ao_order_data[(selected_ao_order_data["volume_cube"].isnull()) | (selected_ao_order_data["weight_ton"].isnull())]["material_num"]))
             if len(missing_ao_sku_list) > 0:
-                st.warning("**Warning:**" + " Missing weight/volume master data of SKU " + missing_ao_sku_list + " for the AO order data, which will be excluded from the optimization.")
+                st.warning("**Warning:**" + " Missing category/weight/volume master data of SKU " + missing_ao_sku_list + " for the AO order data, which will be excluded from the optimization.")
     else:
         st.warning("**Warning:**" + " No order data uploaded (excluding AO order data), the optimization terminated.")
-
-
 
 
 # Calculation Function
@@ -379,8 +387,12 @@ if exist_order_flag == "Y":
     order_data_result = pd.DataFrame()
     shipto_list = ["Ship-to: " + shipto for shipto in list(selected_order_data["shipto"].unique())]
     shipto_num = len(shipto_list)
-    tab_vars = ["tab_" + str(i) for i in range(shipto_num)]
-    tab_vars = st.tabs(shipto_list)
+    if shipto_num > 0:
+        tab_vars = ["tab_" + str(i) for i in range(shipto_num)]
+        tab_vars = st.tabs(shipto_list)
+    else:
+        st.warning("**Warning:**" + " No matched Ship-to, the optimization terminated.")
+        st.stop()
     label = 0
     for shipto in np.array(selected_order_data["shipto"].unique()):
         order_data = selected_order_data[selected_order_data["shipto"] == shipto]
@@ -418,6 +430,10 @@ if exist_order_flag == "Y":
 
         base_loss = (ideal_unit_cost - base_unit_cost) * base_pt
         loss = (ideal_unit_cost - unit_cost) * pt
+        if base_loss > 0:
+            base_loss = 0
+        if loss > 0:
+            loss = 0
 
         size_of_prize = loss - base_loss
         size_of_prize_percent = (loss - base_loss) / base_cost
@@ -464,7 +480,7 @@ if exist_order_flag == "Y":
 
         if "实际采纳数量" in order_data.columns.tolist():
             if order_data["实际采纳数量"] is not np.nan:
-                qty = (order_data["采购需求数量*"] + order_data["实际采纳数量"].fillna(0)) / order_data["箱规⑥"]
+                qty = (order_data["采购需求数量*"] + order_data["实际采纳数量"].fillna(0)) / order_data["箱规"]
                 weight = order_data["weight_ton"] * qty
                 volume = order_data["volume_cube"] * qty
                 ao_qty = ao_order_data["CS"]
@@ -753,7 +769,7 @@ if exist_order_flag == "Y":
                         final_qty.append(total_qty - current_sum)
                 selected_order_data.loc[selected_order_data["material_num"] == material_num, "建议调整数量"] = final_qty
 
-        selected_order_data["建议调整数量"] = selected_order_data["建议调整数量"] * selected_order_data["箱规⑥"]
+        selected_order_data["建议调整数量"] = selected_order_data["建议调整数量"] * selected_order_data["箱规"]
 
         for source in upload_source_list:
             if source in download_source_list:
@@ -766,7 +782,7 @@ if exist_order_flag == "Y":
                     if "北京_实际采纳数量" not in output_data.columns.tolist():
                         output_data.insert(index + 2, "北京_实际采纳数量", np.nan)
                     output_data = output_data.rename(columns={"京东码": "商品编码", "采购需求数量*": "北京"})
-                    output_data.drop(["配送中心*(格式：北京,上海,广州)", "material_num", "箱规⑥", "CS", "max_filler_CS", "category", "volume_cube", "weight_ton", "Region", "shipto", "Source"], axis=1, inplace=True)
+                    output_data.drop(["配送中心*(格式：北京,上海,广州)", "material_num", "箱规", "CS", "max_filler_CS", "category", "volume_cube", "weight_ton", "Region", "shipto", "Source"], axis=1, inplace=True)
                     source = source.rstrip("_横版")
                 else:
                     index = output_data.columns.tolist().index("采购需求数量*")
@@ -774,7 +790,7 @@ if exist_order_flag == "Y":
                     if "实际采纳数量" not in output_data.columns.tolist():
                         output_data.insert(index + 2, "实际采纳数量", np.nan)
                     output_data = output_data.rename(columns={"京东码": "sku*"})
-                    output_data.drop(["material_num", "箱规⑥", "CS", "max_filler_CS", "category", "volume_cube", "weight_ton", "Region", "shipto", "Source"], axis=1, inplace=True)
+                    output_data.drop(["material_num", "箱规", "CS", "max_filler_CS", "category", "volume_cube", "weight_ton", "Region", "shipto", "Source"], axis=1, inplace=True)
                     source = source.rstrip("_竖版")
 
                 output = BytesIO()
@@ -788,4 +804,3 @@ if exist_order_flag == "Y":
                 )
             else:
                 st.warning("**Warning:**" + "There is no order data within the testing scope in the file " + source)
-
