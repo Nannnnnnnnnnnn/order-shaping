@@ -423,7 +423,7 @@ if exist_order_flag == "Y":
         for filler_rate in range(0, 100, 1):
             order_data["max_filler_CS"] = order_data["CS"] * filler_rate / 100
             base_truck_qty, base_cost, base_unit_cost, base_pt, base_wfr, base_vfr, base_mix, category_list, material_list, max_qty, filler_qty, truck_qty, unit_cost, cost, pt, wfr, vfr, mix = order_shaping(ao_order_data, order_data, truck_data)
-            indicator = (base_unit_cost - unit_cost) * pt / abs(np.sum(np.array([round(qty) for qty in filler_qty])))
+            indicator = (base_unit_cost - unit_cost) * pt / np.sum(np.abs(np.array([round(qty) for qty in filler_qty])))
             if indicator > best_indicator:
                 best_indicator = indicator
                 best_filler_rate = filler_rate
@@ -476,8 +476,10 @@ if exist_order_flag == "Y":
             saving_percent = saving / base_cost
             filler_qty = np.array([round(qty) for qty in filler_qty])
             qty_changed = np.sum(filler_qty)
+            abs_qty_changed = np.sum(np.abs(filler_qty))
             order_qty = initial_order_qty + qty_changed
             qty_changed_percent = qty_changed / initial_order_qty
+            abs_qty_changed_percent = abs_qty_changed / initial_order_qty
 
             truck_selected = ""
             for i in range(len(truck_qty)):
@@ -556,14 +558,17 @@ if exist_order_flag == "Y":
                     st.markdown("**Result**")
                     st.markdown("Size of Prize (RMB)")
                     st.markdown("Quantity Changed (CS)")
+                    st.markdown("Abs Quantity Changed (CS)")
                 with col2:
                     st.markdown("**Absolute**")
                     st.markdown("{:.0f}".format(size_of_prize))
                     st.markdown(qty_changed)
+                    st.markdown(abs_qty_changed)
                 with col3:
                     st.markdown("**%**")
                     st.markdown("{:.0f}%".format(size_of_prize_percent * 100))
                     st.markdown("{:.0f}%".format(qty_changed_percent * 100))
+                    st.markdown("{:.0f}%".format(abs_qty_changed_percent * 100))
 
             result = pd.DataFrame(
                 {
@@ -847,3 +852,4 @@ if exist_order_flag == "Y":
                 )
             else:
                 st.warning("**Warning:**" + "There is no order data within the testing scope in the file " + source)
+
