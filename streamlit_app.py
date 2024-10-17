@@ -71,10 +71,12 @@ sku_master = pd.read_excel("sku_master_temp.xlsx", dtype={"material_num": str, "
 uploaded_files = st.file_uploader(label="Please upload the order and truck type data file:", type=["xlsx", "xls"], accept_multiple_files=True)
 original_ao_order_data = pd.DataFrame()
 order_data = pd.DataFrame()
+column_dict = {}
 # selected_shipto = ["2003213268"]
 selected_shipto = ["2003213268", "2002921387"]
 selected_category = ["BC", "FHC", "HC", "PCC"]
 exist_order_flag = "N"
+adopt_calculation_flag = "N"
 
 
 # Rate Definition
@@ -93,6 +95,7 @@ if len(uploaded_files) > 0:
             original_ao_order_data = pd.concat([original_ao_order_data, original_ao_order_data_split])
         else:
             exist_order_flag = "Y"
+            column_dict[uploaded_file.name] = data_split.columns.tolist()
             if True in data_split.columns.str.contains("配送中心"):
                 city_col_name = list(data_split.columns[data_split.columns.str.contains("配送中心")])[0]
                 data_split["sku*"] = data_split["sku*"].map("{:.0f}".format)
@@ -103,9 +106,19 @@ if len(uploaded_files) > 0:
                 data_split["商品编码"] = data_split["商品编码"].map("{:.0f}".format)
                 original_order_data_split = data_split.astype({"商品编码": str})
                 # order_data_split = pd.melt(original_order_data_split, id_vars="商品编码", value_vars=["北京"], var_name="配送中心*(格式：北京,上海,广州)", value_name="采购需求数量*")
-                order_data_split = original_order_data_split.rename(columns={"商品编码": "京东码", "北京": "采购需求数量*"})
+                order_data_split = original_order_data_split.rename(columns={"商品编码": "京东码"})
+                order_data_split["采购需求数量*"] = order_data_split["北京"]
                 order_data_split["配送中心*(格式：北京,上海,广州)"] = "北京"
                 order_data_split["Source"] = uploaded_file.name + "_横版"
+            if True in order_data_split.columns.str.contains("实际采纳数量"):
+                adopt_qty_col_name = list(order_data_split.columns[order_data_split.columns.str.contains("实际采纳数量")])[0]
+                if not order_data_split[adopt_qty_col_name].isnull().any():
+                    adopt_calculation_flag = "Y"
+                    order_data_split["adopt_qty"] = order_data_split[adopt_qty_col_name].fillna(0)
+                else:
+                    order_data_split["adopt_qty"] = order_data_split["采购需求数量*"]
+            else:
+                order_data_split["adopt_qty"] = order_data_split["采购需求数量*"]
             sku_data = pd.merge(sku_transfer_data.loc[:, ["京东码", "宝洁码", "箱规"]], sku_master.loc[:, ["material_num", "category", "volume_cube", "weight_ton"]], how="outer", left_on="宝洁码", right_on="material_num")
             sku_data = sku_data[(sku_data["京东码"].notnull()) & (sku_data["material_num"].notnull())]
             sku_data.drop_duplicates(subset=["京东码"], inplace=True)
@@ -478,43 +491,49 @@ if exist_order_flag == "Y":
         else:
             slog = "0%"
 
-        if "实际采纳数量" in order_data.columns.tolist():
-            if order_data["实际采纳数量"] is not np.nan:
-                qty = (order_data["采购需求数量*"] + order_data["实际采纳数量"].fillna(0)) / order_data["箱规"]
-                weight = order_data["weight_ton"] * qty
-                volume = order_data["volume_cube"] * qty
+        if adopt_calculation_flag == "Y":
+            qty = order_data["adopt_qty"] / order_data["箱规"]
+            weight = order_data["weight_ton"] * qty
+            volume = order_data["volume_cube"] * qty
+            if len(ao_order_data) > 0:
                 ao_qty = ao_order_data["CS"]
                 ao_weight = ao_order_data["weight_ton"] * ao_qty
                 ao_volume = ao_order_data["volume_cube"] * ao_qty
                 initial_order_weight = ao_weight.sum() + weight.sum()
                 initial_order_volume = ao_volume.sum() + volume.sum()
                 adopt_order_qty = ao_qty.sum() + qty.sum()
+            else:
+                initial_order_weight = weight.sum()
+                initial_order_volume = volume.sum()
+                adopt_order_qty = qty.sum()
 
-                truck_capacity_weight = np.array(truck_data["Weight Capacity"])
-                truck_capacity_volume = np.array(truck_data["Max Load Volume"])
-                truck_cost = np.array(truck_data["Base Charge"])
+            truck_capacity_weight = np.array(truck_data["Weight Capacity"])
+            truck_capacity_volume = np.array(truck_data["Max Load Volume"])
+            truck_cost = np.array(truck_data["Base Charge"])
 
-                adopt_truck_qty, adopt_cost, adopt_unit_cost, adopt_pt, adopt_wfr, adopt_vfr, adopt_mix = baseline(
-                    initial_order_weight, initial_order_volume, truck_capacity_weight, truck_capacity_volume,
-                    truck_cost)
+            adopt_truck_qty, adopt_cost, adopt_unit_cost, adopt_pt, adopt_wfr, adopt_vfr, adopt_mix = baseline(
+                initial_order_weight, initial_order_volume, truck_capacity_weight, truck_capacity_volume,
+                truck_cost)
 
-                adopt_loss = (ideal_unit_cost - adopt_unit_cost) * adopt_pt
+            adopt_loss = (ideal_unit_cost - adopt_unit_cost) * adopt_pt
+            if adopt_loss > 0:
+                adopt_loss = 0
 
-                adopt_truck_selected = ""
-                for i in range(len(adopt_truck_qty)):
-                    if adopt_truck_qty[i] > 0:
-                        if adopt_truck_selected == "":
-                            adopt_truck_selected += str(truck_type[i]) + "*" + "{:.0f}".format(adopt_truck_qty[i])
-                        else:
-                            adopt_truck_selected += "+" + str(truck_type[i]) + "*" + "{:.0f}".format(adopt_truck_qty[i])
-                if adopt_order_qty >= 3500:
-                    adopt_slog = "2.3%"
-                elif adopt_order_qty >= 2000:
-                    adopt_slog = "2.1%"
-                elif adopt_order_qty >= 800:
-                    adopt_slog = "1.5%"
-                else:
-                    adopt_slog = "0%"
+            adopt_truck_selected = ""
+            for i in range(len(adopt_truck_qty)):
+                if adopt_truck_qty[i] > 0:
+                    if adopt_truck_selected == "":
+                        adopt_truck_selected += str(truck_type[i]) + "*" + "{:.0f}".format(adopt_truck_qty[i])
+                    else:
+                        adopt_truck_selected += "+" + str(truck_type[i]) + "*" + "{:.0f}".format(adopt_truck_qty[i])
+            if adopt_order_qty >= 3500:
+                adopt_slog = "2.3%"
+            elif adopt_order_qty >= 2000:
+                adopt_slog = "2.1%"
+            elif adopt_order_qty >= 800:
+                adopt_slog = "1.5%"
+            else:
+                adopt_slog = "0%"
 
         with tab_vars[label]:
             st.info("Basic Info")
@@ -592,78 +611,77 @@ if exist_order_flag == "Y":
                 "enableRangeSelection": True
             }
 
-            if "实际采纳数量" in order_data.columns.tolist():
-                if order_data["实际采纳数量"] is not np.nan:
-                    result = pd.DataFrame(
-                        {
-                            "Index": ["Unit Cost (RMB/PT)", "Spending (RMB)", "Loss (RMB)", "Saving (RMB)", "Saving (%)",
-                                      "Truck Type", "VFR", "WFR", "Heavy/Light Mix(CBM/Ton)", "Quantity (CS)",
-                                      "SLOG Impact"],
-                            "Before Shaping": ["{:.1f}".format(base_unit_cost), "{:.0f}".format(base_cost),
-                                               "{:.0f}".format(base_loss), "N/A", "N/A", base_truck_selected,
-                                               "{:.0f}%".format(base_vfr * 100), "{:.0f}%".format(base_wfr * 100),
-                                               "{:.1f}".format(base_mix), initial_order_qty, base_slog],
-                            "Proposed Shaping": ["{:.1f}".format(unit_cost), "{:.0f}".format(cost), "{:.0f}".format(loss),
-                                                 "{:.0f}".format(saving), "{:.0f}%".format(saving_percent * 100),
-                                                 truck_selected, "{:.0f}%".format(vfr * 100), "{:.0f}%".format(wfr * 100),
-                                                 "{:.1f}".format(mix), order_qty, slog],
-                            "Adopt Shaping": ["{:.1f}".format(adopt_unit_cost), "{:.0f}".format(adopt_cost),
-                                              "{:.0f}".format(adopt_loss), "N/A", "N/A", adopt_truck_selected,
-                                              "{:.0f}%".format(adopt_vfr * 100), "{:.0f}%".format(adopt_wfr * 100),
-                                              "{:.1f}".format(adopt_mix), adopt_order_qty, adopt_slog],
-                            "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "0", "N/A", "N/A", ideal_truck_type,
-                                            "{:.0f}%".format(ideal_vfr * 100), "{:.0f}%".format(ideal_wfr * 100),
-                                            "{:.1f}".format(ideal_mix), "N/A", "N/A"]
-                        }
-                    )
-
-                    result_grid_options = {
-                        "columnDefs": [
-                            {
-                                "headerName": "Index",
-                                "field": "Index",
-                                "cellStyle": {
-                                    "text-align": "center",
-                                    "fontWeight": "bold"
-                                },
-                                "sortable": False,
-                                "pinned": "left"
-                            },
-                            {
-                                "headerName": "Before Shaping",
-                                "field": "Before Shaping",
-                                "cellStyle": {
-                                    "text-align": "center"
-                                },
-                                "sortable": False
-                            },
-                            {
-                                "headerName": "Proposed Shaping",
-                                "field": "Proposed Shaping",
-                                "cellStyle": {
-                                    "text-align": "center"
-                                },
-                                "sortable": False
-                            },
-                            {
-                                "headerName": "Adopt Shaping",
-                                "field": "Adopt Shaping",
-                                "cellStyle": {
-                                    "text-align": "center"
-                                },
-                                "sortable": False
-                            },
-                            {
-                                "headerName": "Ideal State",
-                                "field": "Ideal State",
-                                "cellStyle": {
-                                    "text-align": "center"
-                                },
-                                "sortable": False
-                            }
-                        ],
-                        "enableRangeSelection": True
+            if adopt_calculation_flag == "Y":
+                result = pd.DataFrame(
+                    {
+                        "Index": ["Unit Cost (RMB/PT)", "Spending (RMB)", "Loss (RMB)", "Saving (RMB)", "Saving (%)",
+                                  "Truck Type", "VFR", "WFR", "Heavy/Light Mix(CBM/Ton)", "Quantity (CS)",
+                                  "SLOG Impact"],
+                        "Before Shaping": ["{:.1f}".format(base_unit_cost), "{:.0f}".format(base_cost),
+                                           "{:.0f}".format(base_loss), "N/A", "N/A", base_truck_selected,
+                                           "{:.0f}%".format(base_vfr * 100), "{:.0f}%".format(base_wfr * 100),
+                                           "{:.1f}".format(base_mix), initial_order_qty, base_slog],
+                        "Proposed Shaping": ["{:.1f}".format(unit_cost), "{:.0f}".format(cost), "{:.0f}".format(loss),
+                                             "{:.0f}".format(saving), "{:.0f}%".format(saving_percent * 100),
+                                             truck_selected, "{:.0f}%".format(vfr * 100), "{:.0f}%".format(wfr * 100),
+                                             "{:.1f}".format(mix), order_qty, slog],
+                        "Adopted Shaping": ["{:.1f}".format(adopt_unit_cost), "{:.0f}".format(adopt_cost),
+                                          "{:.0f}".format(adopt_loss), "N/A", "N/A", adopt_truck_selected,
+                                          "{:.0f}%".format(adopt_vfr * 100), "{:.0f}%".format(adopt_wfr * 100),
+                                          "{:.1f}".format(adopt_mix), adopt_order_qty, adopt_slog],
+                        "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "0", "N/A", "N/A", ideal_truck_type,
+                                        "{:.0f}%".format(ideal_vfr * 100), "{:.0f}%".format(ideal_wfr * 100),
+                                        "{:.1f}".format(ideal_mix), "N/A", "N/A"]
                     }
+                )
+
+                result_grid_options = {
+                    "columnDefs": [
+                        {
+                            "headerName": "Index",
+                            "field": "Index",
+                            "cellStyle": {
+                                "text-align": "center",
+                                "fontWeight": "bold"
+                            },
+                            "sortable": False,
+                            "pinned": "left"
+                        },
+                        {
+                            "headerName": "Before Shaping",
+                            "field": "Before Shaping",
+                            "cellStyle": {
+                                "text-align": "center"
+                            },
+                            "sortable": False
+                        },
+                        {
+                            "headerName": "Proposed Shaping",
+                            "field": "Proposed Shaping",
+                            "cellStyle": {
+                                "text-align": "center"
+                            },
+                            "sortable": False
+                        },
+                        {
+                            "headerName": "Adopted Shaping",
+                            "field": "Adopted Shaping",
+                            "cellStyle": {
+                                "text-align": "center"
+                            },
+                            "sortable": False
+                        },
+                        {
+                            "headerName": "Ideal State",
+                            "field": "Ideal State",
+                            "cellStyle": {
+                                "text-align": "center"
+                            },
+                            "sortable": False
+                        }
+                    ],
+                    "enableRangeSelection": True
+                }
 
             custom_css = {
                 ".ag-header-cell-label": {
@@ -745,8 +763,8 @@ if exist_order_flag == "Y":
 
     st.divider()
     st.info("Recommendation Data Download")
-    selected_order_data["建议调整数量"] = 0
-    not_selected_order_data["建议调整数量"] = np.nan
+    selected_order_data["suggest_qty"] = 0
+    not_selected_order_data["suggest_qty"] = np.nan
 
     if order_data_result.empty:
         st.warning("**Warning:**" + "There is no order data within the testing scope in the file(s).")
@@ -754,7 +772,7 @@ if exist_order_flag == "Y":
         for material_num in order_data_result["material_num"]:
             order_data_related = selected_order_data[selected_order_data["material_num"] == material_num]
             if len(order_data_related) == 1:
-                selected_order_data.loc[selected_order_data["material_num"] == material_num, "建议调整数量"] = list(order_data_result[order_data_result["material_num"] == material_num]["filler_qty"])
+                selected_order_data.loc[selected_order_data["material_num"] == material_num, "suggest_qty"] = list(order_data_result[order_data_result["material_num"] == material_num]["filler_qty"])
             else:
                 qty_list = list(order_data_related["采购需求数量*"])
                 qty_sum = order_data_related["采购需求数量*"].sum()
@@ -767,39 +785,61 @@ if exist_order_flag == "Y":
                         current_sum += round(total_qty / qty_sum * qty_list[i])
                     else:
                         final_qty.append(total_qty - current_sum)
-                selected_order_data.loc[selected_order_data["material_num"] == material_num, "建议调整数量"] = final_qty
+                selected_order_data.loc[selected_order_data["material_num"] == material_num, "suggest_qty"] = final_qty
 
-        selected_order_data["建议调整数量"] = selected_order_data["建议调整数量"] * selected_order_data["箱规"]
+        selected_order_data["suggest_qty"] = selected_order_data["suggest_qty"] * selected_order_data["箱规"]
 
         for source in upload_source_list:
             if source in download_source_list:
                 source_selected_order_data = selected_order_data[selected_order_data["Source"] == source]
                 source_not_selected_order_data = not_selected_order_data[not_selected_order_data["Source"] == source]
                 output_data = pd.concat([source_selected_order_data, source_not_selected_order_data])
-                index = output_data.columns.tolist().index("采购需求数量*")
                 if "横版" in source:
-                    output_data.insert(index + 1, "北京_建议调整数量", output_data.pop("建议调整数量"))
-                    if "北京_实际采纳数量" not in output_data.columns.tolist():
-                        output_data.insert(index + 2, "北京_实际采纳数量", np.nan)
-                    output_data = output_data.rename(columns={"京东码": "商品编码", "采购需求数量*": "北京"})
-                    output_data.drop(["配送中心*(格式：北京,上海,广州)", "material_num", "箱规", "CS", "max_filler_CS", "category", "volume_cube", "weight_ton", "Region", "shipto", "Source"], axis=1, inplace=True)
+                    index = output_data.columns.tolist().index("北京")
                     source = source.rstrip("_横版")
+                    if "北京_建议调整数量" in output_data.columns.tolist():
+                        output_data.drop(["北京_建议调整数量"], axis=1, inplace=True)
+                    output_data.insert(index + 1, "北京_建议调整数量", output_data.pop("suggest_qty"))
+                    if "北京_实际采纳数量" in output_data.columns.tolist():
+                        output_data = output_data.rename(columns={"北京_实际采纳数量": "北京_实际采纳数量_temp"})
+                        output_data.insert(index + 2, "北京_实际采纳数量", output_data.pop("北京_实际采纳数量_temp"))
+                    else:
+                        output_data.insert(index + 2, "北京_实际采纳数量", np.nan)
+                    output_data = output_data.rename(columns={"京东码": "商品编码"})
+                    column_list = output_data.columns.tolist()
+                    keep_column_list = column_dict[source] + ["北京_建议调整数量", "北京_实际采纳数量"]
+                    drop_column_list = [column for column in column_list if column not in keep_column_list]
+                    output_data.drop(drop_column_list, axis=1, inplace=True)
                 else:
                     index = output_data.columns.tolist().index("采购需求数量*")
-                    output_data.insert(index + 1, "建议调整数量", output_data.pop("建议调整数量"))
-                    if "实际采纳数量" not in output_data.columns.tolist():
+                    source = source.rstrip("_竖版")
+                    if "建议调整数量" in output_data.columns.tolist():
+                        output_data.drop(["建议调整数量"], axis=1, inplace=True)
+                    output_data.insert(index + 1, "建议调整数量", output_data.pop("suggest_qty"))
+                    if "实际采纳数量" in output_data.columns.tolist():
+                        output_data = output_data.rename(columns={"实际采纳数量": "实际采纳数量_temp"})
+                        output_data.insert(index + 2, "实际采纳数量", output_data.pop("实际采纳数量_temp"))
+                    else:
                         output_data.insert(index + 2, "实际采纳数量", np.nan)
                     output_data = output_data.rename(columns={"京东码": "sku*"})
-                    output_data.drop(["material_num", "箱规", "CS", "max_filler_CS", "category", "volume_cube", "weight_ton", "Region", "shipto", "Source"], axis=1, inplace=True)
-                    source = source.rstrip("_竖版")
+                    column_list = output_data.columns.tolist()
+                    keep_column_list = column_dict[source] + ["建议调整数量", "实际采纳数量"]
+                    drop_column_list = [column for column in column_list if column not in keep_column_list]
+                    output_data.drop(drop_column_list, axis=1, inplace=True)
 
                 output = BytesIO()
+                if source.endswith(".xlsx"):
+                    file_name = source.rstrip(".xlsx") + "_result.xlsx"
+                elif source.endswith(".xls"):
+                    file_name = source.rstrip(".xls") + "_result.xlsx"
+                else:
+                    file_name = "unknown_file_type_result.xlsx"
                 with pd.ExcelWriter(output) as writer:
                     output_data.to_excel(writer, index=False)
                 st.download_button(
                     label="Download Optimization Result for " + source,
                     data=output.getvalue(),
-                    file_name=source.split(".")[0] + "_result.xlsx",
+                    file_name=file_name,
                     mime="application/vnd.ms-excel"
                 )
             else:
