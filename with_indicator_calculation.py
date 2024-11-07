@@ -770,33 +770,33 @@ if exist_order_flag == "Y":
             )
         label += 1
 
-    st.divider()
-    st.info("Recommendation Data Download")
-    selected_order_data["suggest_qty"] = 0
-    not_selected_order_data["suggest_qty"] = np.nan
-
-    if order_data_result.empty:
-        st.warning("**Warning:**" + "There is no order data within the testing scope in the file(s).")
-    else:
-        for material_num in order_data_result["material_num"]:
-            order_data_related = selected_order_data[selected_order_data["material_num"] == material_num]
-            if len(order_data_related) == 1:
-                selected_order_data.loc[selected_order_data["material_num"] == material_num, "suggest_qty"] = list(order_data_result[order_data_result["material_num"] == material_num]["filler_qty"])
-            else:
-                qty_list = list(order_data_related["采购需求数量*"])
-                qty_sum = order_data_related["采购需求数量*"].sum()
-                total_qty = order_data_result[order_data_result["material_num"] == material_num]["filler_qty"]
-                final_qty = []
-                current_sum = 0
-                for i in range(len(order_data_related)):
-                    if i < len(order_data_related) - 1:
-                        final_qty.append(round(total_qty / qty_sum * qty_list[i]))
-                        current_sum += round(total_qty / qty_sum * qty_list[i])
-                    else:
-                        final_qty.append(total_qty - current_sum)
-                selected_order_data.loc[selected_order_data["material_num"] == material_num, "suggest_qty"] = final_qty
-
-        selected_order_data["suggest_qty"] = selected_order_data["suggest_qty"] * selected_order_data["箱规"]
+        st.divider()
+        st.info("Recommendation Data Download")
+        selected_order_data["suggest_qty"] = 0
+        not_selected_order_data["suggest_qty"] = np.nan
+    
+        if order_data_result.empty:
+            st.warning("**Warning:**" + "There is no order data within the testing scope in the file(s).")
+        else:
+            for material_num in order_data_result["material_num"]:
+                order_data_related = selected_order_data[selected_order_data["material_num"] == material_num]
+                if len(order_data_related) == 1:
+                    selected_order_data.loc[selected_order_data["material_num"] == material_num, "suggest_qty"] = list(order_data_result[order_data_result["material_num"] == material_num]["filler_qty"])
+                else:
+                    qty_list = list(order_data_related["采购需求数量*"])
+                    qty_sum = order_data_related["采购需求数量*"].sum()
+                    total_qty = order_data_result[order_data_result["material_num"] == material_num]["filler_qty"]
+                    final_qty = []
+                    current_sum = 0
+                    for i in range(len(order_data_related)):
+                        if i < len(order_data_related) - 1:
+                            final_qty.append(round(total_qty / qty_sum * qty_list[i]))
+                            current_sum += round(total_qty / qty_sum * qty_list[i])
+                        else:
+                            final_qty.append(total_qty - current_sum)
+                    selected_order_data.loc[selected_order_data["material_num"] == material_num, "suggest_qty"] = final_qty
+    
+            selected_order_data["suggest_qty"] = selected_order_data["suggest_qty"] * selected_order_data["箱规"]
 
         for source in upload_source_list:
             if source in download_source_list:
