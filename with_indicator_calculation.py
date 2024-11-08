@@ -62,9 +62,8 @@ original_ao_order_data = pd.DataFrame()
 order_data = pd.DataFrame()
 column_dict = {}
 # selected_shipto = ["2003213268"]
-# selected_shipto = ["2003213268", "2002921387"]
 selected_shipto = ["2003241647", "2002921387"]
-selected_category = ["BC", "FHC", "HC", "PCC"]
+selected_category = ["FHC", "HC", "PCC"]
 exist_order_flag = "N"
 adopt_calculation_flag = "N"
 filler_rate_initialized_flag = "N"
@@ -454,6 +453,8 @@ if exist_order_flag == "Y":
                 base_loss = 0
             if loss > 0:
                 loss = 0
+            base_loss_percent = base_loss / base_cost
+            loss_percent = loss / cost
 
             size_of_prize = loss - base_loss
             size_of_prize_percent = (loss - base_loss) / base_cost
@@ -525,6 +526,7 @@ if exist_order_flag == "Y":
                 adopt_loss = (ideal_unit_cost - adopt_unit_cost) * adopt_pt
                 if adopt_loss > 0:
                     adopt_loss = 0
+                adopt_loss_percent = adopt_loss / adopt_cost
 
                 adopt_truck_selected = ""
                 for i in range(len(adopt_truck_qty)):
@@ -623,22 +625,22 @@ if exist_order_flag == "Y":
             if adopt_calculation_flag == "Y":
                 result = pd.DataFrame(
                     {
-                        "Index": ["Unit Cost (RMB/PT)", "Spending (RMB)", "Loss (RMB)", "Saving (RMB)", "Saving (%)",
+                        "Index": ["Unit Cost (RMB/PT)", "Spending (RMB)", "Loss (RMB)", "Loss (%)", "Saving (RMB)", "Saving (%)",
                                   "Truck Type", "VFR", "WFR", "Heavy/Light Mix(CBM/Ton)", "Quantity (CS)",
                                   "SLOG Impact"],
                         "Before Shaping": ["{:.1f}".format(base_unit_cost), "{:.0f}".format(base_cost),
-                                           "{:.0f}".format(base_loss), "N/A", "N/A", base_truck_selected,
+                                           "{:.0f}".format(base_loss), "{:.0f}%".format(base_loss_percent * 100), "N/A", "N/A", base_truck_selected,
                                            "{:.0f}%".format(base_vfr * 100), "{:.0f}%".format(base_wfr * 100),
                                            "{:.1f}".format(base_mix), initial_order_qty, base_slog],
-                        "Proposed Shaping": ["{:.1f}".format(unit_cost), "{:.0f}".format(cost), "{:.0f}".format(loss),
+                        "Proposed Shaping": ["{:.1f}".format(unit_cost), "{:.0f}".format(cost), "{:.0f}".format(loss), "{:.0f}%".format(loss_percent * 100),
                                              "{:.0f}".format(saving), "{:.0f}%".format(saving_percent * 100),
                                              truck_selected, "{:.0f}%".format(vfr * 100), "{:.0f}%".format(wfr * 100),
                                              "{:.1f}".format(mix), order_qty, slog],
                         "Adopted Shaping": ["{:.1f}".format(adopt_unit_cost), "{:.0f}".format(adopt_cost),
-                                          "{:.0f}".format(adopt_loss), "N/A", "N/A", adopt_truck_selected,
+                                          "{:.0f}".format(adopt_loss), "{:.0f}%".format(adopt_loss_percent * 100), "N/A", "N/A", adopt_truck_selected,
                                           "{:.0f}%".format(adopt_vfr * 100), "{:.0f}%".format(adopt_wfr * 100),
                                           "{:.1f}".format(adopt_mix), adopt_order_qty, adopt_slog],
-                        "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "0", "N/A", "N/A", ideal_truck_type,
+                        "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "0", "0%", "N/A", "N/A", ideal_truck_type,
                                         "{:.0f}%".format(ideal_vfr * 100), "{:.0f}%".format(ideal_wfr * 100),
                                         "{:.1f}".format(ideal_mix), "N/A", "N/A"]
                     }
@@ -768,89 +770,90 @@ if exist_order_flag == "Y":
                 theme="alpine",
                 custom_css=custom_css
             )
-
-            st.divider()
-            st.info("Recommendation Data Download")
-            selected_order_data["suggest_qty"] = 0
-            not_selected_order_data["suggest_qty"] = np.nan
-        
-            if order_data_result.empty:
-                st.warning("**Warning:**" + "There is no order data within the testing scope in the file(s).")
-            else:
-                for material_num in order_data_result["material_num"]:
-                    order_data_related = selected_order_data[selected_order_data["material_num"] == material_num]
-                    if len(order_data_related) == 1:
-                        selected_order_data.loc[selected_order_data["material_num"] == material_num, "suggest_qty"] = list(order_data_result[order_data_result["material_num"] == material_num]["filler_qty"])
-                    else:
-                        qty_list = list(order_data_related["采购需求数量*"])
-                        qty_sum = order_data_related["采购需求数量*"].sum()
-                        total_qty = order_data_result[order_data_result["material_num"] == material_num]["filler_qty"]
-                        final_qty = []
-                        current_sum = 0
-                        for i in range(len(order_data_related)):
-                            if i < len(order_data_related) - 1:
-                                final_qty.append(round(total_qty / qty_sum * qty_list[i]))
-                                current_sum += round(total_qty / qty_sum * qty_list[i])
-                            else:
-                                final_qty.append(total_qty - current_sum)
-                        selected_order_data.loc[selected_order_data["material_num"] == material_num, "suggest_qty"] = final_qty
-        
-                selected_order_data["suggest_qty"] = selected_order_data["suggest_qty"] * selected_order_data["箱规"]
-    
-            for source in upload_source_list:
-                if source in download_source_list:
-                    source_selected_order_data = selected_order_data[selected_order_data["Source"] == source]
-                    source_not_selected_order_data = not_selected_order_data[not_selected_order_data["Source"] == source]
-                    output_data = pd.concat([source_selected_order_data, source_not_selected_order_data])
-                    if "横版" in source:
-                        index = output_data.columns.tolist().index("北京")
-                        source = source.rstrip("_横版")
-                        if "北京_建议调整数量" in output_data.columns.tolist():
-                            output_data.drop(["北京_建议调整数量"], axis=1, inplace=True)
-                        output_data.insert(index + 1, "北京_建议调整数量", output_data.pop("suggest_qty"))
-                        if "北京_实际采纳数量" in output_data.columns.tolist():
-                            output_data = output_data.rename(columns={"北京_实际采纳数量": "北京_实际采纳数量_temp"})
-                            output_data.insert(index + 2, "北京_实际采纳数量", output_data.pop("北京_实际采纳数量_temp"))
-                        else:
-                            output_data.insert(index + 2, "北京_实际采纳数量", np.nan)
-                        output_data = output_data.rename(columns={"京东码": "商品编码"})
-                        column_list = output_data.columns.tolist()
-                        keep_column_list = column_dict[source] + ["北京_建议调整数量", "北京_实际采纳数量"]
-                        drop_column_list = [column for column in column_list if column not in keep_column_list]
-                        output_data.drop(drop_column_list, axis=1, inplace=True)
-                    else:
-                        index = output_data.columns.tolist().index("采购需求数量*")
-                        source = source.rstrip("_竖版")
-                        if "建议调整数量" in output_data.columns.tolist():
-                            output_data.drop(["建议调整数量"], axis=1, inplace=True)
-                        output_data.insert(index + 1, "建议调整数量", output_data.pop("suggest_qty"))
-                        if "实际采纳数量" in output_data.columns.tolist():
-                            output_data = output_data.rename(columns={"实际采纳数量": "实际采纳数量_temp"})
-                            output_data.insert(index + 2, "实际采纳数量", output_data.pop("实际采纳数量_temp"))
-                        else:
-                            output_data.insert(index + 2, "实际采纳数量", np.nan)
-                        output_data = output_data.rename(columns={"京东码": "sku*"})
-                        column_list = output_data.columns.tolist()
-                        keep_column_list = column_dict[source] + ["建议调整数量", "实际采纳数量"]
-                        drop_column_list = [column for column in column_list if column not in keep_column_list]
-                        output_data.drop(drop_column_list, axis=1, inplace=True)
-    
-                    output = BytesIO()
-                    if source.endswith(".xlsx"):
-                        file_name = source.rstrip(".xlsx") + "_result.xlsx"
-                    elif source.endswith(".xls"):
-                        file_name = source.rstrip(".xls") + "_result.xlsx"
-                    else:
-                        file_name = "unknown_file_type_result.xlsx"
-                    with pd.ExcelWriter(output) as writer:
-                        output_data.to_excel(writer, index=False)
-                    st.download_button(
-                        label="Download Optimization Result for " + source,
-                        data=output.getvalue(),
-                        file_name=file_name,
-                        mime="application/vnd.ms-excel"
-                    )
-                else:
-                    st.warning("**Warning:**" + "There is no order data within the testing scope in the file " + source)
-
         label += 1
+
+    st.divider()
+    st.info("Recommendation Data Download")
+    selected_order_data["suggest_qty"] = 0
+    not_selected_order_data["suggest_qty"] = np.nan
+
+    if order_data_result.empty:
+        st.warning("**Warning:**" + "There is no order data within the testing scope in the file(s).")
+    else:
+        for shipto in np.array(selected_order_data["shipto"].unique()):
+            for material_num in order_data_result["material_num"]:
+                order_data_related = selected_order_data[(selected_order_data["material_num"] == material_num) & (selected_order_data["shipto"] == shipto)]
+                if len(order_data_related) == 1:
+                    selected_order_data.loc[(selected_order_data["material_num"] == material_num) & (selected_order_data["shipto"] == shipto), "suggest_qty"] = list(order_data_result[(order_data_result["material_num"] == material_num) & (order_data_result["shipto"] == shipto)]["filler_qty"])
+                else:
+                    qty_list = list(order_data_related["采购需求数量*"])
+                    qty_sum = order_data_related["采购需求数量*"].sum()
+                    total_qty = order_data_result[(order_data_result["material_num"] == material_num) & (order_data_result["shipto"] == shipto)]["filler_qty"]
+                    final_qty = []
+                    current_sum = 0
+                    for i in range(len(order_data_related)):
+                        if i < len(order_data_related) - 1:
+                            final_qty.append(round(total_qty / qty_sum * qty_list[i]))
+                            current_sum += round(total_qty / qty_sum * qty_list[i])
+                        else:
+                            final_qty.append(total_qty - current_sum)
+                    selected_order_data.loc[(selected_order_data["material_num"] == material_num) & (selected_order_data["shipto"] == shipto), "suggest_qty"] = final_qty
+
+        selected_order_data["suggest_qty"] = selected_order_data["suggest_qty"] * selected_order_data["箱规"]
+
+    for source in upload_source_list:
+        if source in download_source_list:
+            source_selected_order_data = selected_order_data[selected_order_data["Source"] == source]
+            source_not_selected_order_data = not_selected_order_data[not_selected_order_data["Source"] == source]
+            output_data = pd.concat([source_selected_order_data, source_not_selected_order_data])
+            if "横版" in source:
+                index = output_data.columns.tolist().index("北京")
+                source = source.rstrip("_横版")
+                if "北京_建议调整数量" in output_data.columns.tolist():
+                    output_data.drop(["北京_建议调整数量"], axis=1, inplace=True)
+                output_data.insert(index + 1, "北京_建议调整数量", output_data.pop("suggest_qty"))
+                if "北京_实际采纳数量" in output_data.columns.tolist():
+                    output_data = output_data.rename(columns={"北京_实际采纳数量": "北京_实际采纳数量_temp"})
+                    output_data.insert(index + 2, "北京_实际采纳数量", output_data.pop("北京_实际采纳数量_temp"))
+                else:
+                    output_data.insert(index + 2, "北京_实际采纳数量", np.nan)
+                output_data = output_data.rename(columns={"京东码": "商品编码"})
+                column_list = output_data.columns.tolist()
+                keep_column_list = column_dict[source] + ["北京_建议调整数量", "北京_实际采纳数量"]
+                drop_column_list = [column for column in column_list if column not in keep_column_list]
+                output_data.drop(drop_column_list, axis=1, inplace=True)
+            else:
+                index = output_data.columns.tolist().index("采购需求数量*")
+                source = source.rstrip("_竖版")
+                if "建议调整数量" in output_data.columns.tolist():
+                    output_data.drop(["建议调整数量"], axis=1, inplace=True)
+                output_data.insert(index + 1, "建议调整数量", output_data.pop("suggest_qty"))
+                if "实际采纳数量" in output_data.columns.tolist():
+                    output_data = output_data.rename(columns={"实际采纳数量": "实际采纳数量_temp"})
+                    output_data.insert(index + 2, "实际采纳数量", output_data.pop("实际采纳数量_temp"))
+                else:
+                    output_data.insert(index + 2, "实际采纳数量", np.nan)
+                output_data = output_data.rename(columns={"京东码": "sku*"})
+                column_list = output_data.columns.tolist()
+                keep_column_list = column_dict[source] + ["建议调整数量", "实际采纳数量"]
+                drop_column_list = [column for column in column_list if column not in keep_column_list]
+                output_data.drop(drop_column_list, axis=1, inplace=True)
+
+            output = BytesIO()
+            if source.endswith(".xlsx"):
+                file_name = source.rstrip(".xlsx") + "_result.xlsx"
+            elif source.endswith(".xls"):
+                file_name = source.rstrip(".xls") + "_result.xlsx"
+            else:
+                file_name = "unknown_file_type_result.xlsx"
+            with pd.ExcelWriter(output) as writer:
+                output_data.to_excel(writer, index=False)
+            st.download_button(
+                label="Download Optimization Result for " + source,
+                data=output.getvalue(),
+                file_name=file_name,
+                mime="application/vnd.ms-excel"
+            )
+        else:
+            st.warning("**Warning:**" + "There is no order data within the testing scope in the file " + file_name)
+
