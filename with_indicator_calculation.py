@@ -540,6 +540,9 @@ if exist_order_flag == "Y":
                     adopt_loss = 0
                 adopt_loss_percent = adopt_loss / adopt_cost
 
+                adopt_saving = (base_unit_cost - adopt_unit_cost) * adopt_pt
+                adopt_saving_percent = adopt_saving / base_cost
+
                 adopt_truck_selected = ""
                 for i in range(len(adopt_truck_qty)):
                     if adopt_truck_qty[i] > 0:
@@ -683,7 +686,8 @@ if exist_order_flag == "Y":
                                              "{:.0f}%".format(material_changed_percent * 100)],
                         "Adopted Shaping": ["{:.1f}".format(adopt_unit_cost), "{:.0f}".format(adopt_cost),
                                             "{:.0f}".format(adopt_loss), "{:.0f}%".format(adopt_loss_percent * 100),
-                                            "N/A", "N/A", adopt_truck_selected,
+                                            "{:.0f}".format(adopt_saving), "{:.0f}%".format(adopt_saving_percent * 100),
+                                            adopt_truck_selected,
                                             "{:.0f}%".format(adopt_vfr * 100), "{:.0f}%".format(adopt_wfr * 100),
                                             "{:.1f}".format(adopt_mix), adopt_order_qty, adopt_qty_changed,
                                             "{:.0f}%".format(adopt_qty_changed_percent * 100), adopt_abs_qty_changed,
