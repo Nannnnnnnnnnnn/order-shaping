@@ -286,7 +286,8 @@ def order_shaping(ao_order_data, order_data, truck_data):
     # Data Initialize
     order_data = pd.concat(
         [order_data.groupby(by=["shipto", "material_num"])[["CS", "max_filler_CS"]].sum(),
-         order_data.groupby(by=["shipto", "material_num"])[["category", "volume_cube", "weight_ton"]].max()], axis=1)
+         order_data.groupby(by=["shipto", "material_num"])[["category", "volume_cube", "weight_ton"]].max()], axis=1) # 该步骤会去掉material_num为空的行
+
     order_data["category"] = order_data["category"].astype(str)
     order_data = order_data.rename(columns={"volume_cube": "unit_volume_cube", "weight_ton": "unit_weight_ton"})
     order_data["unit_volume_cube"] = order_data["unit_volume_cube"].astype(float)
@@ -446,6 +447,9 @@ if exist_order_flag == "Y":
             )
             order_data_result_split["shipto"] = shipto
             order_data_result = pd.concat([order_data_result, order_data_result_split])
+            material_total = len(filler_qty)
+            material_changed = len([qty for qty in filler_qty if qty is not None and qty != "" and qty != 0])
+            material_changed_percent = material_changed / material_total
 
             base_loss = (ideal_unit_cost - base_unit_cost) * base_pt
             loss = (ideal_unit_cost - unit_cost) * pt
@@ -515,6 +519,14 @@ if exist_order_flag == "Y":
                     initial_order_volume = volume.sum()
                     adopt_order_qty = qty.sum()
 
+                adopt_filler_qty = (order_data["adopt_qty"] - order_data["CS"]) / order_data["箱规"]
+                adopt_qty_changed = np.sum(adopt_filler_qty)
+                adopt_abs_qty_changed = np.sum(np.abs(adopt_filler_qty))
+                adopt_qty_changed_percent = adopt_qty_changed / initial_order_qty
+                adopt_abs_qty_changed_percent = adopt_abs_qty_changed / initial_order_qty
+                adopt_material_changed = len([qty for qty in adopt_filler_qty if qty is not None and qty != "" and qty != 0])
+                adopt_material_changed_percent = adopt_material_changed / material_total
+
                 truck_capacity_weight = np.array(truck_data["Weight Capacity"])
                 truck_capacity_volume = np.array(truck_data["Max Load Volume"])
                 truck_cost = np.array(truck_data["Base Charge"])
@@ -575,10 +587,32 @@ if exist_order_flag == "Y":
 
             result = pd.DataFrame(
                 {
-                    "Index": ["Unit Cost (RMB/PT)", "Spending (RMB)", "Loss (RMB)", "Saving (RMB)", "Saving (%)", "Truck Type", "VFR", "WFR", "Heavy/Light Mix(CBM/Ton)", "Quantity (CS)", "SLOG Impact"],
-                    "Before Shaping": ["{:.1f}".format(base_unit_cost), "{:.0f}".format(base_cost), "{:.0f}".format(base_loss), "N/A", "N/A", base_truck_selected, "{:.0f}%".format(base_vfr * 100), "{:.0f}%".format(base_wfr * 100), "{:.1f}".format(base_mix), initial_order_qty, base_slog],
-                    "After Shaping": ["{:.1f}".format(unit_cost), "{:.0f}".format(cost), "{:.0f}".format(loss), "{:.0f}".format(saving), "{:.0f}%".format(saving_percent * 100), truck_selected, "{:.0f}%".format(vfr * 100), "{:.0f}%".format(wfr * 100), "{:.1f}".format(mix), order_qty, slog],
-                    "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "0", "N/A", "N/A", ideal_truck_type, "{:.0f}%".format(ideal_vfr * 100), "{:.0f}%".format(ideal_wfr * 100), "{:.1f}".format(ideal_mix), "N/A", "N/A"]
+                    "Index": ["Unit Cost (RMB/PT)", "Spending (RMB)", "Loss (RMB)", "Loss (%)", "Saving (RMB)",
+                              "Saving (%)",
+                              "Truck Type", "VFR", "WFR", "Heavy/Light Mix(CBM/Ton)", "Quantity (CS)",
+                              "Quantity Changed (CS)", "Quantity Changed (%)", "Abs Quantity Changed (CS)",
+                              "Abs Quantity Changed (%)",
+                              "SLOG Impact", "SKU (#)", "SKU Changed (#)", "SKU Changed (%)"],
+                    "Before Shaping": ["{:.1f}".format(base_unit_cost), "{:.0f}".format(base_cost),
+                                       "{:.0f}".format(base_loss), "{:.0f}%".format(base_loss_percent * 100), "N/A",
+                                       "N/A", base_truck_selected,
+                                       "{:.0f}%".format(base_vfr * 100), "{:.0f}%".format(base_wfr * 100),
+                                       "{:.1f}".format(base_mix), initial_order_qty, "N/A", "N/A", "N/A", "N/A",
+                                       base_slog,
+                                       material_total, "N/A", "N/A"],
+                    "After Shaping": ["{:.1f}".format(unit_cost), "{:.0f}".format(cost), "{:.0f}".format(loss),
+                                      "{:.0f}%".format(loss_percent * 100),
+                                      "{:.0f}".format(saving), "{:.0f}%".format(saving_percent * 100),
+                                      truck_selected, "{:.0f}%".format(vfr * 100), "{:.0f}%".format(wfr * 100),
+                                      "{:.1f}".format(mix), order_qty, qty_changed,
+                                      "{:.0f}%".format(qty_changed_percent * 100), abs_qty_changed,
+                                      "{:.0f}%".format(abs_qty_changed_percent * 100), slog,
+                                      material_total, material_changed,
+                                      "{:.0f}%".format(material_changed_percent * 100)],
+                    "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "0", "0%", "N/A", "N/A", ideal_truck_type,
+                                    "{:.0f}%".format(ideal_vfr * 100), "{:.0f}%".format(ideal_wfr * 100),
+                                    "{:.1f}".format(ideal_mix), "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A",
+                                    "N/A"]
                 }
             )
 
@@ -625,24 +659,42 @@ if exist_order_flag == "Y":
             if adopt_calculation_flag == "Y":
                 result = pd.DataFrame(
                     {
-                        "Index": ["Unit Cost (RMB/PT)", "Spending (RMB)", "Loss (RMB)", "Loss (%)", "Saving (RMB)", "Saving (%)",
+                        "Index": ["Unit Cost (RMB/PT)", "Spending (RMB)", "Loss (RMB)", "Loss (%)", "Saving (RMB)",
+                                  "Saving (%)",
                                   "Truck Type", "VFR", "WFR", "Heavy/Light Mix(CBM/Ton)", "Quantity (CS)",
-                                  "SLOG Impact"],
+                                  "Quantity Changed (CS)", "Quantity Changed (%)", "Abs Quantity Changed (CS)",
+                                  "Abs Quantity Changed (%)",
+                                  "SLOG Impact", "SKU (#)", "SKU Changed (#)", "SKU Changed (%)"],
                         "Before Shaping": ["{:.1f}".format(base_unit_cost), "{:.0f}".format(base_cost),
-                                           "{:.0f}".format(base_loss), "{:.0f}%".format(base_loss_percent * 100), "N/A", "N/A", base_truck_selected,
+                                           "{:.0f}".format(base_loss), "{:.0f}%".format(base_loss_percent * 100), "N/A",
+                                           "N/A", base_truck_selected,
                                            "{:.0f}%".format(base_vfr * 100), "{:.0f}%".format(base_wfr * 100),
-                                           "{:.1f}".format(base_mix), initial_order_qty, base_slog],
-                        "Proposed Shaping": ["{:.1f}".format(unit_cost), "{:.0f}".format(cost), "{:.0f}".format(loss), "{:.0f}%".format(loss_percent * 100),
+                                           "{:.1f}".format(base_mix), initial_order_qty, "N/A", "N/A", "N/A", "N/A",
+                                           base_slog,
+                                           material_total, "N/A", "N/A"],
+                        "Proposed Shaping": ["{:.1f}".format(unit_cost), "{:.0f}".format(cost), "{:.0f}".format(loss),
+                                             "{:.0f}%".format(loss_percent * 100),
                                              "{:.0f}".format(saving), "{:.0f}%".format(saving_percent * 100),
                                              truck_selected, "{:.0f}%".format(vfr * 100), "{:.0f}%".format(wfr * 100),
-                                             "{:.1f}".format(mix), order_qty, slog],
+                                             "{:.1f}".format(mix), order_qty, qty_changed,
+                                             "{:.0f}%".format(qty_changed_percent * 100), abs_qty_changed,
+                                             "{:.0f}%".format(abs_qty_changed_percent * 100), slog,
+                                             material_total, material_changed,
+                                             "{:.0f}%".format(material_changed_percent * 100)],
                         "Adopted Shaping": ["{:.1f}".format(adopt_unit_cost), "{:.0f}".format(adopt_cost),
-                                          "{:.0f}".format(adopt_loss), "{:.0f}%".format(adopt_loss_percent * 100), "N/A", "N/A", adopt_truck_selected,
-                                          "{:.0f}%".format(adopt_vfr * 100), "{:.0f}%".format(adopt_wfr * 100),
-                                          "{:.1f}".format(adopt_mix), adopt_order_qty, adopt_slog],
-                        "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "0", "0%", "N/A", "N/A", ideal_truck_type,
+                                            "{:.0f}".format(adopt_loss), "{:.0f}%".format(adopt_loss_percent * 100),
+                                            "N/A", "N/A", adopt_truck_selected,
+                                            "{:.0f}%".format(adopt_vfr * 100), "{:.0f}%".format(adopt_wfr * 100),
+                                            "{:.1f}".format(adopt_mix), adopt_order_qty, adopt_qty_changed,
+                                            "{:.0f}%".format(adopt_qty_changed_percent * 100), adopt_abs_qty_changed,
+                                            "{:.0f}%".format(adopt_abs_qty_changed_percent * 100), adopt_slog,
+                                            material_total, adopt_material_changed,
+                                            "{:.0f}%".format(adopt_material_changed_percent * 100)],
+                        "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "0", "0%", "N/A", "N/A",
+                                        ideal_truck_type,
                                         "{:.0f}%".format(ideal_vfr * 100), "{:.0f}%".format(ideal_wfr * 100),
-                                        "{:.1f}".format(ideal_mix), "N/A", "N/A"]
+                                        "{:.1f}".format(ideal_mix), "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A",
+                                        "N/A", "N/A"]
                     }
                 )
 
@@ -855,5 +907,9 @@ if exist_order_flag == "Y":
                 mime="application/vnd.ms-excel"
             )
         else:
-            st.warning("**Warning:**" + "There is no order data within the testing scope in the file " + file_name)
+            if "横版" in source:
+                source = source.rstrip("_横版")
+            else:
+                source = source.rstrip("_竖版")
+            st.warning("**Warning:**" + "There is no order data within the testing scope in the file " + source)
 
