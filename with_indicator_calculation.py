@@ -519,7 +519,7 @@ if exist_order_flag == "Y":
                     initial_order_volume = volume.sum()
                     adopt_order_qty = qty.sum()
 
-                adopt_filler_qty = (order_data["adopt_qty"] - order_data["CS"]) / order_data["箱规"]
+                adopt_filler_qty = order_data["adopt_qty"] / order_data["箱规"] - order_data["CS"]
                 adopt_qty_changed = np.sum(adopt_filler_qty)
                 adopt_abs_qty_changed = np.sum(np.abs(adopt_filler_qty))
                 adopt_qty_changed_percent = adopt_qty_changed / initial_order_qty
