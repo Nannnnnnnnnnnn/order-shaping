@@ -888,7 +888,7 @@ if exist_order_flag == "Y":
                 output_data = output_data.rename(columns={"京东码": "sku*"})
                 column_list = output_data.columns.tolist()
                 keep_column_list = column_dict[source] + ["建议调整数量", "实际采纳数量"]
-                drop_column_list = [column for column in column_list if column not in keep_column_list]
+                drop_column_list = [column for column in column_list if column not in keep_column_list and "配送中心" not in column]
                 output_data.drop(drop_column_list, axis=1, inplace=True)
 
             output = BytesIO()
