@@ -885,10 +885,11 @@ if exist_order_flag == "Y":
                     output_data.insert(index + 2, "实际采纳数量", output_data.pop("实际采纳数量_temp"))
                 else:
                     output_data.insert(index + 2, "实际采纳数量", np.nan)
-                output_data = output_data.rename(columns={"京东码": "sku*"})
+                city_col_name = [column for column in column_dict[source] if "配送中心" in column][0]
+                output_data = output_data.rename(columns={"京东码": "sku*", "配送中心*(格式：北京,上海,广州)": city_col_name})
                 column_list = output_data.columns.tolist()
                 keep_column_list = column_dict[source] + ["建议调整数量", "实际采纳数量"]
-                drop_column_list = [column for column in column_list if column not in keep_column_list and "配送中心" not in column]
+                drop_column_list = [column for column in column_list if column not in keep_column_list]
                 output_data.drop(drop_column_list, axis=1, inplace=True)
 
             output = BytesIO()
@@ -912,4 +913,3 @@ if exist_order_flag == "Y":
             else:
                 source = source.rstrip("_竖版")
             st.warning("**Warning:**" + "There is no order data within the testing scope in the file " + source)
-
