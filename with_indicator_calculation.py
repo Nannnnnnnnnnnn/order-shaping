@@ -60,10 +60,11 @@ sku_master = pd.read_excel("sku_master_temp.xlsx", dtype={"material_num": str, "
 uploaded_files = st.file_uploader(label="Please upload the order and truck type data file:", type=["xlsx", "xls"], accept_multiple_files=True)
 original_ao_order_data = pd.DataFrame()
 order_data = pd.DataFrame()
+horizontal_order_data = pd.DataFrame()
 column_dict = {}
-# selected_shipto = ["2003213268"]
 selected_shipto = ["2003241647", "2002921387"]
 selected_category = ["FHC", "HC", "PCC"]
+city = list(shipto_city_data["Region"])
 exist_order_flag = "N"
 adopt_calculation_flag = "N"
 filler_rate_initialized_flag = "N"
@@ -88,12 +89,15 @@ if len(uploaded_files) > 0:
                 order_data_split = original_order_data_split.rename(columns={"sku*": "京东码", city_col_name: "配送中心*(格式：北京,上海,广州)"})
                 order_data_split["Source"] = uploaded_file.name + "_竖版"
             else:
+                city_list = [col for col in data_split.columns.tolist() if col in city]
+                var_list = [col for col in data_split.columns.tolist() if col not in city]
                 data_split["商品编码"] = data_split["商品编码"].map("{:.0f}".format)
                 original_order_data_split = data_split.astype({"商品编码": str})
-                # order_data_split = pd.melt(original_order_data_split, id_vars="商品编码", value_vars=["北京"], var_name="配送中心*(格式：北京,上海,广州)", value_name="采购需求数量*")
-                order_data_split = original_order_data_split.rename(columns={"商品编码": "京东码"})
-                order_data_split["采购需求数量*"] = order_data_split["北京"]
-                order_data_split["配送中心*(格式：北京,上海,广州)"] = "北京"
+                horizontal_order_data_split = original_order_data_split
+                horizontal_order_data_split["Source"] = uploaded_file.name + "_横版"
+                horizontal_order_data = pd.concat([horizontal_order_data, horizontal_order_data_split])
+                order_data_split = pd.melt(original_order_data_split, id_vars=var_list, value_vars=city_list, var_name="配送中心*(格式：北京,上海,广州)", value_name="采购需求数量*")
+                order_data_split = order_data_split.rename(columns={"商品编码": "京东码"})
                 order_data_split["Source"] = uploaded_file.name + "_横版"
             if True in order_data_split.columns.str.contains("实际采纳数量"):
                 adopt_qty_col_name = list(order_data_split.columns[order_data_split.columns.str.contains("实际采纳数量")])[0]
@@ -469,6 +473,7 @@ if exist_order_flag == "Y":
                         base_truck_selected += str(truck_type[i]) + "*" + "{:.0f}".format(base_truck_qty[i])
                     else:
                         base_truck_selected += "+" + str(truck_type[i]) + "*" + "{:.0f}".format(base_truck_qty[i])
+            base_truck_num = sum(base_truck_qty)
             if initial_order_qty >= 3500:
                 base_slog = "2.3%"
             elif initial_order_qty >= 2000:
@@ -494,6 +499,7 @@ if exist_order_flag == "Y":
                         truck_selected += str(ideal_truck_type[i]) + "*" + "{:.0f}".format(truck_qty[i])
                     else:
                         truck_selected += "+" + str(ideal_truck_type[i]) + "*" + "{:.0f}".format(truck_qty[i])
+            truck_num = sum(truck_qty)
             if order_qty >= 3500:
                 slog = "2.3%"
             elif order_qty >= 2000:
@@ -526,6 +532,8 @@ if exist_order_flag == "Y":
                 adopt_abs_qty_changed_percent = adopt_abs_qty_changed / initial_order_qty
                 adopt_material_changed = len([qty for qty in adopt_filler_qty if qty is not None and qty != "" and qty != 0])
                 adopt_material_changed_percent = adopt_material_changed / material_total
+                #st.write(adopt_material_changed)
+                #st.write(qty)
 
                 truck_capacity_weight = np.array(truck_data["Weight Capacity"])
                 truck_capacity_volume = np.array(truck_data["Max Load Volume"])
@@ -550,6 +558,7 @@ if exist_order_flag == "Y":
                             adopt_truck_selected += str(truck_type[i]) + "*" + "{:.0f}".format(adopt_truck_qty[i])
                         else:
                             adopt_truck_selected += "+" + str(truck_type[i]) + "*" + "{:.0f}".format(adopt_truck_qty[i])
+                adopt_truck_num = sum(adopt_truck_qty)
                 if adopt_order_qty >= 3500:
                     adopt_slog = "2.3%"
                 elif adopt_order_qty >= 2000:
@@ -592,13 +601,13 @@ if exist_order_flag == "Y":
                 {
                     "Index": ["Unit Cost (RMB/PT)", "Spending (RMB)", "Loss (RMB)", "Loss (%)", "Saving (RMB)",
                               "Saving (%)",
-                              "Truck Type", "VFR", "WFR", "Heavy/Light Mix(CBM/Ton)", "Quantity (CS)",
+                              "Truck Type", "Truck (#)", "VFR", "WFR", "Heavy/Light Mix(CBM/Ton)", "Quantity (CS)",
                               "Quantity Changed (CS)", "Quantity Changed (%)", "Abs Quantity Changed (CS)",
                               "Abs Quantity Changed (%)",
                               "SLOG Impact", "SKU (#)", "SKU Changed (#)", "SKU Changed (%)"],
                     "Before Shaping": ["{:.1f}".format(base_unit_cost), "{:.0f}".format(base_cost),
                                        "{:.0f}".format(base_loss), "{:.0f}%".format(base_loss_percent * 100), "N/A",
-                                       "N/A", base_truck_selected,
+                                       "N/A", base_truck_selected, "{:.0f}".format(base_truck_num),
                                        "{:.0f}%".format(base_vfr * 100), "{:.0f}%".format(base_wfr * 100),
                                        "{:.1f}".format(base_mix), initial_order_qty, "N/A", "N/A", "N/A", "N/A",
                                        base_slog,
@@ -606,13 +615,13 @@ if exist_order_flag == "Y":
                     "After Shaping": ["{:.1f}".format(unit_cost), "{:.0f}".format(cost), "{:.0f}".format(loss),
                                       "{:.0f}%".format(loss_percent * 100),
                                       "{:.0f}".format(saving), "{:.0f}%".format(saving_percent * 100),
-                                      truck_selected, "{:.0f}%".format(vfr * 100), "{:.0f}%".format(wfr * 100),
+                                      truck_selected, "{:.0f}".format(truck_num), "{:.0f}%".format(vfr * 100), "{:.0f}%".format(wfr * 100),
                                       "{:.1f}".format(mix), order_qty, qty_changed,
                                       "{:.0f}%".format(qty_changed_percent * 100), abs_qty_changed,
                                       "{:.0f}%".format(abs_qty_changed_percent * 100), slog,
                                       material_total, material_changed,
                                       "{:.0f}%".format(material_changed_percent * 100)],
-                    "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "0", "0%", "N/A", "N/A", ideal_truck_type,
+                    "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "0", "0%", "N/A", "N/A", ideal_truck_type, "N/A",
                                     "{:.0f}%".format(ideal_vfr * 100), "{:.0f}%".format(ideal_wfr * 100),
                                     "{:.1f}".format(ideal_mix), "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A",
                                     "N/A"]
@@ -662,40 +671,40 @@ if exist_order_flag == "Y":
             if adopt_calculation_flag == "Y":
                 result = pd.DataFrame(
                     {
-                        "Index": ["Unit Cost (RMB/PT)", "Spending (RMB)", "Loss (RMB)", "Loss (%)", "Saving (RMB)",
+                        "Index": ["Unit Cost (RMB/PT)", "Payable Ton (PT)", "Spending (RMB)", "Loss (RMB)", "Loss (%)", "Saving (RMB)",
                                   "Saving (%)",
-                                  "Truck Type", "VFR", "WFR", "Heavy/Light Mix(CBM/Ton)", "Quantity (CS)",
+                                  "Truck Type", "Truck (#)", "VFR", "WFR", "Heavy/Light Mix(CBM/Ton)", "Quantity (CS)",
                                   "Quantity Changed (CS)", "Quantity Changed (%)", "Abs Quantity Changed (CS)",
                                   "Abs Quantity Changed (%)",
                                   "SLOG Impact", "SKU (#)", "SKU Changed (#)", "SKU Changed (%)"],
-                        "Before Shaping": ["{:.1f}".format(base_unit_cost), "{:.0f}".format(base_cost),
+                        "Before Shaping": ["{:.1f}".format(base_unit_cost), "{:.1f}".format(base_pt), "{:.0f}".format(base_cost),
                                            "{:.0f}".format(base_loss), "{:.0f}%".format(base_loss_percent * 100), "N/A",
-                                           "N/A", base_truck_selected,
+                                           "N/A", base_truck_selected, "{:.0f}".format(base_truck_num),
                                            "{:.0f}%".format(base_vfr * 100), "{:.0f}%".format(base_wfr * 100),
                                            "{:.1f}".format(base_mix), initial_order_qty, "N/A", "N/A", "N/A", "N/A",
                                            base_slog,
                                            material_total, "N/A", "N/A"],
-                        "Proposed Shaping": ["{:.1f}".format(unit_cost), "{:.0f}".format(cost), "{:.0f}".format(loss),
+                        "Proposed Shaping": ["{:.1f}".format(unit_cost), "{:.1f}".format(pt), "{:.0f}".format(cost), "{:.0f}".format(loss),
                                              "{:.0f}%".format(loss_percent * 100),
                                              "{:.0f}".format(saving), "{:.0f}%".format(saving_percent * 100),
-                                             truck_selected, "{:.0f}%".format(vfr * 100), "{:.0f}%".format(wfr * 100),
+                                             truck_selected, "{:.0f}".format(truck_num), "{:.0f}%".format(vfr * 100), "{:.0f}%".format(wfr * 100),
                                              "{:.1f}".format(mix), order_qty, qty_changed,
                                              "{:.0f}%".format(qty_changed_percent * 100), abs_qty_changed,
                                              "{:.0f}%".format(abs_qty_changed_percent * 100), slog,
                                              material_total, material_changed,
                                              "{:.0f}%".format(material_changed_percent * 100)],
-                        "Adopted Shaping": ["{:.1f}".format(adopt_unit_cost), "{:.0f}".format(adopt_cost),
+                        "Adopted Shaping": ["{:.1f}".format(adopt_unit_cost), "{:.1f}".format(adopt_pt), "{:.0f}".format(adopt_cost),
                                             "{:.0f}".format(adopt_loss), "{:.0f}%".format(adopt_loss_percent * 100),
                                             "{:.0f}".format(adopt_saving), "{:.0f}%".format(adopt_saving_percent * 100),
-                                            adopt_truck_selected,
+                                            adopt_truck_selected, "{:.0f}".format(adopt_truck_num),
                                             "{:.0f}%".format(adopt_vfr * 100), "{:.0f}%".format(adopt_wfr * 100),
                                             "{:.1f}".format(adopt_mix), adopt_order_qty, adopt_qty_changed,
                                             "{:.0f}%".format(adopt_qty_changed_percent * 100), adopt_abs_qty_changed,
                                             "{:.0f}%".format(adopt_abs_qty_changed_percent * 100), adopt_slog,
                                             material_total, adopt_material_changed,
                                             "{:.0f}%".format(adopt_material_changed_percent * 100)],
-                        "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "0", "0%", "N/A", "N/A",
-                                        ideal_truck_type,
+                        "Ideal State": ["{:.1f}".format(ideal_unit_cost), "N/A", "N/A", "0", "0%", "N/A", "N/A",
+                                        ideal_truck_type, "N/A",
                                         "{:.0f}%".format(ideal_vfr * 100), "{:.0f}%".format(ideal_wfr * 100),
                                         "{:.1f}".format(ideal_mix), "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A",
                                         "N/A", "N/A"]
@@ -860,27 +869,32 @@ if exist_order_flag == "Y":
     for source in upload_source_list:
         if source in download_source_list:
             source_selected_order_data = selected_order_data[selected_order_data["Source"] == source]
+            selected_city = list(source_selected_order_data["Region"].drop_duplicates())
             source_not_selected_order_data = not_selected_order_data[not_selected_order_data["Source"] == source]
             output_data = pd.concat([source_selected_order_data, source_not_selected_order_data])
             if "横版" in source:
-                index = output_data.columns.tolist().index("北京")
+                source_horizontal_order_data = horizontal_order_data[horizontal_order_data["Source"] == source]
                 source = source.rstrip("_横版")
-                if "北京_建议调整数量" in output_data.columns.tolist():
-                    output_data.drop(["北京_建议调整数量"], axis=1, inplace=True)
-                output_data.insert(index + 1, "北京_建议调整数量", output_data.pop("suggest_qty"))
-                if "北京_实际采纳数量" in output_data.columns.tolist():
-                    output_data = output_data.rename(columns={"北京_实际采纳数量": "北京_实际采纳数量_temp"})
-                    output_data.insert(index + 2, "北京_实际采纳数量", output_data.pop("北京_实际采纳数量_temp"))
-                else:
-                    output_data.insert(index + 2, "北京_实际采纳数量", np.nan)
-                output_data = output_data.rename(columns={"京东码": "商品编码"})
-                column_list = output_data.columns.tolist()
-                keep_column_list = column_dict[source] + ["北京_建议调整数量", "北京_实际采纳数量"]
-                drop_column_list = [column for column in column_list if column not in keep_column_list]
-                output_data.drop(drop_column_list, axis=1, inplace=True)
+                selected_output_data = output_data[output_data["Region"].isin(selected_city)]
+                selected_output_data = selected_output_data.rename(columns={"京东码": "商品编码"})
+                selected_output_data = selected_output_data.pivot(index="商品编码", columns="配送中心*(格式：北京,上海,广州)", values="suggest_qty")
+                selected_output_data.columns = ["{}_{}".format(col, "suggest_qty") for col in selected_output_data.columns.tolist() if col in selected_city]
+                selected_output_data = selected_output_data.reset_index()
+                output_data = pd.merge(source_horizontal_order_data, selected_output_data, how="left", on="商品编码")
+                for city in selected_city:
+                    index = output_data.columns.tolist().index(city)
+                    if city + "_建议调整数量" in output_data.columns.tolist():
+                        output_data.drop([city + "_建议调整数量"], axis=1, inplace=True)
+                    output_data.insert(index + 1, city + "_建议调整数量", output_data.pop(city + "_suggest_qty"))
+                    if city + "_实际采纳数量" in output_data.columns.tolist():
+                        output_data = output_data.rename(columns={city + "_实际采纳数量": city + "_实际采纳数量_temp"})
+                        output_data.insert(index + 2, city + "_实际采纳数量", output_data.pop(city + "_实际采纳数量_temp"))
+                    else:
+                        output_data.insert(index + 2, city + "_实际采纳数量", np.nan)
+                output_data.drop(["Source"], axis=1, inplace=True)
             else:
-                index = output_data.columns.tolist().index("采购需求数量*")
                 source = source.rstrip("_竖版")
+                index = output_data.columns.tolist().index("采购需求数量*")
                 if "建议调整数量" in output_data.columns.tolist():
                     output_data.drop(["建议调整数量"], axis=1, inplace=True)
                 output_data.insert(index + 1, "建议调整数量", output_data.pop("suggest_qty"))
