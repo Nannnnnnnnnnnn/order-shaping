@@ -4,6 +4,6 @@ pyodbc
 pandas
 xlrd
 numpy
-gurobipy
+gurobipy==11.0.3
 streamlit-aggrid
 openpyxl
