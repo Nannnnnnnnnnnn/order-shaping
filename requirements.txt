@@ -1,9 +1,9 @@
-streamlit
-shareplum
-pyodbc
-pandas
-xlrd
-numpy
+streamlit==1.38.0
+shareplum==0.5.1
+pyodbc==5.1.0
+pandas==2.2.2
+xlrd==2.0.1
+numpy==1.26.4
 gurobipy==11.0.3
-streamlit-aggrid
-openpyxl
+streamlit-aggrid==1.0.3.post2
+openpyxl==3.1.2
