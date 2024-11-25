@@ -114,7 +114,7 @@ if len(uploaded_files) > 0:
             sku_data.drop_duplicates(subset=["京东码"], inplace=True)
             order_data_split = pd.merge(order_data_split, sku_data.loc[:, ["京东码", "宝洁码", "箱规", "category", "volume_cube", "weight_ton"]], how="left", on="京东码")
             order_data_split["CS"] = order_data_split["采购需求数量*"] / order_data_split["箱规"]
-            if uploaded_file.name.contains("沙宣"):
+            if "沙宣" in uploaded_file.name:
                 order_data_split["max_filler_CS"] = 0
             else:
                 order_data_split["max_filler_CS"] = order_data_split["CS"] * filler_rate_upper_limit / 100
