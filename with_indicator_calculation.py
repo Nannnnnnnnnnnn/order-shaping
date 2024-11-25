@@ -56,7 +56,6 @@ with open("sku_master_temp.xlsx", mode='wb') as file:
 sku_master = pd.read_excel("sku_master_temp.xlsx", dtype={"material_num": str, "category": str})
 
 
-
 # File Uploading
 uploaded_files = st.file_uploader(label="Please upload the order and truck type data file:", type=["xlsx", "xls"], accept_multiple_files=True)
 original_ao_order_data = pd.DataFrame()
@@ -70,6 +69,7 @@ exist_order_flag = "N"
 adopt_calculation_flag = "N"
 filler_rate_initialized_flag = "N"
 filler_rate_upper_limit = 10
+
 
 # Data Initialization
 if len(uploaded_files) > 0:
@@ -115,9 +115,10 @@ if len(uploaded_files) > 0:
             order_data_split = pd.merge(order_data_split, sku_data.loc[:, ["京东码", "宝洁码", "箱规", "category", "volume_cube", "weight_ton"]], how="left", on="京东码")
             order_data_split["CS"] = order_data_split["采购需求数量*"] / order_data_split["箱规"]
             if "沙宣" in uploaded_file.name:
-                order_data_split["max_filler_CS"] = 0
+                order_data_split["max_filler_qty_in_cs"] = 0
             else:
-                order_data_split["max_filler_CS"] = order_data_split["CS"] * filler_rate_upper_limit / 100
+                order_data_split["max_filler_qty_in_cs"] = order_data_split["CS"]
+            order_data_split["max_filler_CS"] = order_data_split["max_filler_qty_in_cs"] * filler_rate_upper_limit / 100
             order_data_split = order_data_split.rename(columns={"宝洁码": "material_num"})
             order_data_split["Region"] = order_data_split["配送中心*(格式：北京,上海,广州)"]
             if any(uploaded_file.name.startswith(file_category := category) for category in selected_category):
@@ -430,7 +431,7 @@ if exist_order_flag == "Y":
         best_indicator = (base_unit_cost - unit_cost) * pt / abs(np.sum(np.array([round(qty) for qty in filler_qty])))
         best_filler_rate = filler_rate_upper_limit
         for filler_rate in range(0, filler_rate_upper_limit, 1):
-            order_data["max_filler_CS"] = order_data["CS"] * filler_rate / 100
+            order_data["max_filler_CS"] = order_data_split["max_filler_qty_in_cs"] * filler_rate / 100
             base_truck_qty, base_cost, base_unit_cost, base_pt, base_wfr, base_vfr, base_mix, category_list, material_list, max_qty, filler_qty, truck_qty, unit_cost, cost, pt, wfr, vfr, mix = order_shaping(ao_order_data, order_data, truck_data)
             indicator = (base_unit_cost - unit_cost) * pt / np.sum(np.abs(np.array([round(qty) for qty in filler_qty])))
             if indicator > best_indicator:
@@ -443,7 +444,7 @@ if exist_order_flag == "Y":
         with tab_vars[label]:
             st.success("Recommended Filler Rate: " + "**{:.0f}%**".format(best_filler_rate_vars[label]))
             filler_rate_vars[label] = st.slider(label="Please select the filler rate (%):", min_value=0, max_value=100, value=best_filler_rate_vars[label], step=1, key=label)
-            order_data["max_filler_CS"] = order_data["CS"] * filler_rate_vars[label] / 100
+            order_data["max_filler_CS"] = order_data_split["max_filler_qty_in_cs"] * filler_rate_vars[label] / 100
             base_truck_qty, base_cost, base_unit_cost, base_pt, base_wfr, base_vfr, base_mix, category_list, material_list, max_qty, filler_qty, truck_qty, unit_cost, cost, pt, wfr, vfr, mix = order_shaping(ao_order_data, order_data, truck_data)
 
             min_qty = - max_qty
