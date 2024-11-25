@@ -431,7 +431,7 @@ if exist_order_flag == "Y":
         best_indicator = (base_unit_cost - unit_cost) * pt / abs(np.sum(np.array([round(qty) for qty in filler_qty])))
         best_filler_rate = filler_rate_upper_limit
         for filler_rate in range(0, filler_rate_upper_limit, 1):
-            order_data["max_filler_CS"] = order_data_split["max_filler_qty_in_cs"] * filler_rate / 100
+            order_data["max_filler_CS"] = order_data["max_filler_qty_in_cs"] * filler_rate / 100
             base_truck_qty, base_cost, base_unit_cost, base_pt, base_wfr, base_vfr, base_mix, category_list, material_list, max_qty, filler_qty, truck_qty, unit_cost, cost, pt, wfr, vfr, mix = order_shaping(ao_order_data, order_data, truck_data)
             indicator = (base_unit_cost - unit_cost) * pt / np.sum(np.abs(np.array([round(qty) for qty in filler_qty])))
             if indicator > best_indicator:
@@ -444,7 +444,7 @@ if exist_order_flag == "Y":
         with tab_vars[label]:
             st.success("Recommended Filler Rate: " + "**{:.0f}%**".format(best_filler_rate_vars[label]))
             filler_rate_vars[label] = st.slider(label="Please select the filler rate (%):", min_value=0, max_value=100, value=best_filler_rate_vars[label], step=1, key=label)
-            order_data["max_filler_CS"] = order_data_split["max_filler_qty_in_cs"] * filler_rate_vars[label] / 100
+            order_data["max_filler_CS"] = order_data["max_filler_qty_in_cs"] * filler_rate_vars[label] / 100
             base_truck_qty, base_cost, base_unit_cost, base_pt, base_wfr, base_vfr, base_mix, category_list, material_list, max_qty, filler_qty, truck_qty, unit_cost, cost, pt, wfr, vfr, mix = order_shaping(ao_order_data, order_data, truck_data)
 
             min_qty = - max_qty
