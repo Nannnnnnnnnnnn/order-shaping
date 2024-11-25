@@ -6,17 +6,6 @@ from io import BytesIO
 
 
 # Page Settings
-st.set_page_config(
-    page_title="Version Converting Tool",
-    page_icon=":milky_way:",
-    layout="wide",
-    menu_items={
-        # "Get Help": "https://www.extremelycoolapp.com/help",
-        "Report a bug": "mailto:wang.n.22@pg.com",
-        "About": """Developer: Wang Nan
-                    \n Email: wang.n.22@pg.com"""
-    }
-)
 st.title("Version Converting Tool")
 st.caption("Feel free to contact developer _Wang Nan_ if you have any question: wang.n.22@pg.com")
 st.divider()
