@@ -26,7 +26,7 @@ site = Site(sharepointSite, version=Version.v365, authcookie=authcookie)
 folder = site.Folder("Shared Documents/31. Order Loss Analysis/JD Full Truck Load/Order Shaping Tool/Input_MD")
 truck_master_filename = "Tariff.xlsx"
 ideal_truck_type_master_filename = "Ideal Truck Type.xlsx"
-sku_transfer_data_filename = "产品主数据.xlsx"
+sku_transfer_data_filename = "产品主数据_20241015030419.xlsx"
 shipto_city_data_filename = "JD B2C 线路明细.xlsx"
 sku_master_filename = "SKU主数据.xlsx"
 
