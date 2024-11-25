@@ -220,7 +220,10 @@ def model_execution(initial_order_weight, initial_order_volume, order_unit_weigh
     q = [[] for i in range(l)]
     for i in range(l):
         if i in range(n):
-            q[i] = model.addVar(lb=min_qty[i] / max_pt, ub=max_qty[i] / min_pt, vtype=grb.GRB.CONTINUOUS, name="q_" + str(i))
+            if min_qty[i] >= 0:
+                q[i] = model.addVar(lb=min_qty[i] / max_pt, ub=max_qty[i] / min_pt, vtype=grb.GRB.CONTINUOUS, name="q_" + str(i))
+            else:
+                q[i] = model.addVar(lb=min_qty[i] / min_pt, ub=max_qty[i] / min_pt, vtype=grb.GRB.CONTINUOUS, name="q_" + str(i))
         elif i in range(n, n + m):
             q[i] = model.addVar(lb=0, ub=float("inf"), vtype=grb.GRB.CONTINUOUS, name="q_" + str(i))
         elif i in range(n + m, n * 2 + m):
