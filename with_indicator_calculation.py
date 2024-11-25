@@ -117,7 +117,7 @@ if len(uploaded_files) > 0:
             if uploaded_file.name.contains("沙宣"):
                 order_data_split["max_filler_CS"] = 0
             else:
-                order_data_split["max_filler_CS"] = order_data_split["CS"]
+                order_data_split["max_filler_CS"] = order_data_split["CS"] * filler_rate_upper_limit / 100
             order_data_split = order_data_split.rename(columns={"宝洁码": "material_num"})
             order_data_split["Region"] = order_data_split["配送中心*(格式：北京,上海,广州)"]
             if any(uploaded_file.name.startswith(file_category := category) for category in selected_category):
