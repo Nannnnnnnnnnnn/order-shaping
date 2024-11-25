@@ -35,6 +35,7 @@ shipto_city_data = pd.read_excel("shipto_city_data_temp.xlsx", dtype={"City": st
 
 # File Uploading
 uploaded_files = st.file_uploader(label="Please upload vertical/horizontal formatted order data file(s):", type=["xlsx", "xls"], accept_multiple_files=True)
+city = list(shipto_city_data["Region"])
 
 if len(uploaded_files) > 0:
     for uploaded_file in uploaded_files:
