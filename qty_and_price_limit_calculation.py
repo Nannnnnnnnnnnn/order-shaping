@@ -414,10 +414,10 @@ def order_shaping(ao_order_data, order_data, truck_data):
     truck_capacity_volume = np.array(truck_data["Max Load Volume"])
     truck_cost = np.array(truck_data["Base Charge"])
 
-    ideal_truck_type = np.array(truck_data[truck_data["Optimal Truck Type"] == "Y"]["Truck Type"])
-    ideal_truck_capacity_weight = np.array(truck_data[truck_data["Optimal Truck Type"] == "Y"]["Weight Capacity"])
-    ideal_truck_capacity_volume = np.array(truck_data[truck_data["Optimal Truck Type"] == "Y"]["Max Load Volume"])
-    ideal_truck_cost = np.array(truck_data[truck_data["Optimal Truck Type"] == "Y"]["Base Charge"])
+    available_truck_type = np.array(truck_data[truck_data["Available Truck Type"] == "Y"]["Truck Type"])
+    available_truck_capacity_weight = np.array(truck_data[truck_data["Available Truck Type"] == "Y"]["Weight Capacity"])
+    available_truck_capacity_volume = np.array(truck_data[truck_data["Available Truck Type"] == "Y"]["Max Load Volume"])
+    available_truck_cost = np.array(truck_data[truck_data["Available Truck Type"] == "Y"]["Base Charge"])
 
     # Calculate
     base_truck_qty, base_cost, base_unit_cost, base_pt, base_wfr, base_vfr, base_mix = baseline(initial_order_weight, initial_order_volume, truck_capacity_weight, truck_capacity_volume, truck_cost)
@@ -426,8 +426,8 @@ def order_shaping(ao_order_data, order_data, truck_data):
                                                                                       order_unit_price, category_key,
                                                                                       category_index_lb, category_index_ub,
                                                                                       category_price, max_qty, min_qty,
-                                                                                      priority_param, ideal_truck_capacity_weight,
-                                                                                      ideal_truck_capacity_volume, ideal_truck_cost)
+                                                                                      priority_param, available_truck_capacity_weight,
+                                                                                      available_truck_capacity_volume, available_truck_cost)
 
     if len(leave_order_data) > 0:
         category_list = pd.concat([category_list, leave_category_list])
@@ -467,6 +467,7 @@ if exist_order_flag == "Y":
         truck_data = truck_master[truck_master["Ship-to"] == shipto]
         ideal_truck_type_data = ideal_truck_type_master[ideal_truck_type_master["Ship-to"] == shipto]
         index = ideal_truck_type_data.index.tolist()[0]
+        ideal_truck_type = ideal_truck_type_data["Ideal Truck Type"][index]
         ideal_unit_cost = ideal_truck_type_data["Ideal Unit Cost"][index]
         ideal_vfr = ideal_truck_type_data["Ideal VFR"][index]
         ideal_wfr = ideal_truck_type_data["Ideal WFR"][index]
@@ -474,7 +475,7 @@ if exist_order_flag == "Y":
         customer_name = ideal_truck_type_data["Customer Name"][index]
 
         truck_type = np.array(truck_data["Truck Type"])
-        ideal_truck_type = np.array(truck_data[truck_data["Optimal Truck Type"] == "Y"]["Truck Type"])
+        available_truck_type = np.array(truck_data[truck_data["Available Truck Type"] == "Y"]["Truck Type"])
 
         base_truck_qty, base_cost, base_unit_cost, base_pt, base_wfr, base_vfr, base_mix, category_list, material_list, max_qty, filler_qty, truck_qty, unit_cost, cost, pt, wfr, vfr, mix = order_shaping(ao_order_data, order_data, truck_data)
 
@@ -520,7 +521,7 @@ if exist_order_flag == "Y":
             base_slog = "0%"
 
         saving = (base_unit_cost - unit_cost) * pt
-        saving_percent = saving / base_cost
+        saving_percent = (base_unit_cost - unit_cost) * base_unit_cost
         filler_qty = np.array([round(qty) for qty in filler_qty])
         qty_changed = np.sum(filler_qty)
         abs_qty_changed = np.sum(np.abs(filler_qty))
@@ -532,9 +533,9 @@ if exist_order_flag == "Y":
         for i in range(len(truck_qty)):
             if truck_qty[i] > 0:
                 if truck_selected == "":
-                    truck_selected += str(ideal_truck_type[i]) + "*" + "{:.0f}".format(truck_qty[i])
+                    truck_selected += str(available_truck_type[i]) + "*" + "{:.0f}".format(truck_qty[i])
                 else:
-                    truck_selected += "+" + str(ideal_truck_type[i]) + "*" + "{:.0f}".format(truck_qty[i])
+                    truck_selected += "+" + str(available_truck_type[i]) + "*" + "{:.0f}".format(truck_qty[i])
         truck_num = sum(truck_qty)
         if order_qty >= 3500:
             slog = "2.3%"
@@ -586,7 +587,7 @@ if exist_order_flag == "Y":
             adopt_loss_percent = adopt_loss / adopt_cost
 
             adopt_saving = (base_unit_cost - adopt_unit_cost) * adopt_pt
-            adopt_saving_percent = adopt_saving / base_cost
+            adopt_saving_percent = (base_unit_cost - adopt_unit_cost) / base_unit_cost
 
             adopt_truck_selected = ""
             for i in range(len(adopt_truck_qty)):
