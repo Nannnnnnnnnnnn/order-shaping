@@ -66,7 +66,6 @@ sku_master = pd.read_excel("sku_master_temp.xlsx", dtype={"material_num": str, "
 uploaded_files = st.file_uploader(label="Please upload the order and truck type data file:", type=["xlsx", "xls"], accept_multiple_files=True)
 original_ao_order_data = pd.DataFrame()
 order_data = pd.DataFrame()
-horizontal_order_data = pd.DataFrame()
 column_dict = {}
 selected_shipto = ["2003241647", "2002921387"]
 selected_category = ["FHC", "HC", "PCC"]
@@ -89,23 +88,11 @@ if len(uploaded_files) > 0:
         else:
             exist_order_flag = "Y"
             column_dict[uploaded_file.name] = data_split.columns.tolist()
-            if True in data_split.columns.str.contains("配送中心"):
-                city_col_name = list(data_split.columns[data_split.columns.str.contains("配送中心")])[0]
-                data_split["sku*"] = data_split["sku*"].map("{:.0f}".format)
-                original_order_data_split = data_split.astype({"sku*": str, city_col_name: str})
-                order_data_split = original_order_data_split.rename(columns={"sku*": "京东码", city_col_name: "配送中心*(格式：北京,上海,广州)"})
-                order_data_split["Source"] = uploaded_file.name + "_竖版"
-            else:
-                city_list = [col for col in data_split.columns.tolist() if col in city]
-                var_list = [col for col in data_split.columns.tolist() if col not in city]
-                data_split["商品编码"] = data_split["商品编码"].map("{:.0f}".format)
-                original_order_data_split = data_split.astype({"商品编码": str})
-                horizontal_order_data_split = original_order_data_split
-                horizontal_order_data_split["Source"] = uploaded_file.name + "_横版"
-                horizontal_order_data = pd.concat([horizontal_order_data, horizontal_order_data_split])
-                order_data_split = pd.melt(original_order_data_split, id_vars=var_list, value_vars=city_list, var_name="配送中心*(格式：北京,上海,广州)", value_name="采购需求数量*")
-                order_data_split = order_data_split.rename(columns={"商品编码": "京东码"})
-                order_data_split["Source"] = uploaded_file.name + "_横版"
+            city_col_name = list(data_split.columns[data_split.columns.str.contains("配送中心")])[0]
+            data_split["sku*"] = data_split["sku*"].map("{:.0f}".format)
+            original_order_data_split = data_split.astype({"sku*": str, city_col_name: str, "补货前周转天数": float, "补货后周转天数": float, "正负可调整周转天数": float})
+            order_data_split = original_order_data_split.rename(columns={"sku*": "京东码", city_col_name: "配送中心*(格式：北京,上海,广州)"})
+            order_data_split["Source"] = uploaded_file.name + "_竖版"
             if True in order_data_split.columns.str.contains("实际采纳数量"):
                 adopt_qty_col_name = list(order_data_split.columns[order_data_split.columns.str.contains("实际采纳数量")])[0]
                 if not order_data_split[adopt_qty_col_name].isnull().any():
@@ -123,6 +110,7 @@ if len(uploaded_files) > 0:
             order_data_split["仓报价"] = order_data_split["仓报价"] * order_data_split["箱规"]
             order_data_split["CS"] = order_data_split["采购需求数量*"] / order_data_split["箱规"]
             order_data_split["max_filler_CS"] = order_data_split["CS"] / (order_data_split["补货后周转天数"] - order_data_split["补货前周转天数"]) * order_data_split["正负可调整周转天数"]
+            order_data_split["max_filler_CS"] = order_data_split[["CS", "max_filler_CS"]].min(axis=1)
             order_data_split = order_data_split.rename(columns={"宝洁码": "material_num"})
             order_data_split["Region"] = order_data_split["配送中心*(格式：北京,上海,广州)"]
             if any(uploaded_file.name.startswith(file_category := category) for category in selected_category):
@@ -130,7 +118,7 @@ if len(uploaded_files) > 0:
                 source_shipto_city_data = shipto_city_data[shipto_city_data["品类"].str.startswith(file_category + "/", na=False) | shipto_city_data["品类"].str.contains("/" + file_category, na=False)]
                 order_data_split = pd.merge(order_data_split, source_shipto_city_data.loc[:, ["Region", "shipto"]], how="left", on="Region")
             else:
-                st.warning("**Warning:**" + " The name(s) of the uploaded order data file(s) should **_start(s) with_** the category short name, e.g. \"FHC-周转单-8.26-168w\". Please check the name(s) and upload the file(s) again.")
+                st.warning("**Warning:**" + " The name(s) of the uploaded order data file(s) should **_start(s) with_** the category short name, e.g. \"FHC-周转单-8.26-168w-横版\". Please check the name(s) and upload the file(s) again.")
                 st.stop()
             order_data = pd.concat([order_data, order_data_split])
     if exist_order_flag == "Y":
@@ -347,7 +335,7 @@ def order_shaping(ao_order_data, order_data, truck_data):
         ao_order_data["unit_price"] = ao_order_data["unit_price"].astype(float)
         ao_order_data["volume_cube"] = ao_order_data["CS"] * ao_order_data["unit_volume_cube"]
         ao_order_data["weight_ton"] = ao_order_data["CS"] * ao_order_data["unit_weight_ton"]
-        ao_order_data["price"] = ao_order_data["CS"] * order_data["unit_price"]
+        ao_order_data["price"] = ao_order_data["CS"] * ao_order_data["unit_price"]
         ao_order_data = ao_order_data.reset_index(names=["shipto", "material_num"])
         ao_order_data["shipto"] = ao_order_data["shipto"].astype(str)
         ao_order_data["material_num"] = ao_order_data["material_num"].astype(str)
@@ -382,7 +370,7 @@ def order_shaping(ao_order_data, order_data, truck_data):
     min_qty = - max_qty
     category_list = order_data["category"]
     material_list = order_data["material_num"]
-    category_key = order_data["category"].drop_duplicates()
+    category_key = list(order_data["category"].drop_duplicates())
     category_index_lb = []
     category_index_ub = []
     category_price = []
@@ -924,47 +912,26 @@ if exist_order_flag == "Y":
             selected_city = list(source_selected_order_data["Region"].drop_duplicates())
             source_not_selected_order_data = not_selected_order_data[not_selected_order_data["Source"] == source]
             output_data = pd.concat([source_selected_order_data, source_not_selected_order_data])
-            if "横版" in source:
-                source_horizontal_order_data = horizontal_order_data[horizontal_order_data["Source"] == source]
-                source = source.rstrip("_横版")
-                selected_output_data = output_data[output_data["Region"].isin(selected_city)]
-                selected_output_data = selected_output_data.rename(columns={"京东码": "商品编码"})
-                selected_output_data = selected_output_data.pivot(index="商品编码", columns="配送中心*(格式：北京,上海,广州)", values=["suggest_qty", "suggest_qty_in_cs"])
-                selected_output_data.columns = ["{}_{}".format(col[1], col[0]) for col in selected_output_data.columns.values if col[1] in selected_city]
-                selected_output_data = selected_output_data.reset_index()
-                output_data = pd.merge(source_horizontal_order_data, selected_output_data, how="left", on="商品编码")
-                for city in selected_city:
-                    index = output_data.columns.tolist().index(city)
-                    if city + "_建议调整数量" in output_data.columns.tolist():
-                        output_data.drop([city + "_建议调整数量"], axis=1, inplace=True)
-                        output_data.drop([city + "_建议调整箱数"], axis=1, inplace=True)
-                    output_data.insert(index + 1, city + "_建议调整数量", output_data.pop(city + "_suggest_qty"))
-                    output_data.insert(index + 2, city + "_建议调整箱数", output_data.pop(city + "_suggest_qty_in_cs"))
-                    if city + "_实际采纳数量" in output_data.columns.tolist():
-                        output_data = output_data.rename(columns={city + "_实际采纳数量": city + "_实际采纳数量_temp"})
-                        output_data.insert(index + 3, city + "_实际采纳数量", output_data.pop(city + "_实际采纳数量_temp"))
-                    else:
-                        output_data.insert(index + 3, city + "_实际采纳数量", np.nan)
-                output_data.drop(["Source"], axis=1, inplace=True)
+            output_data.drop(["补货前周转天数", "补货后周转天数", "正负可调整周转天数"], axis=1, inplace=True)
+
+            source = source.rstrip("_竖版")
+            index = output_data.columns.tolist().index("采购需求数量*")
+            if "建议调整数量" in output_data.columns.tolist():
+                output_data.drop(["建议调整数量"], axis=1, inplace=True)
+                output_data.drop(["建议调整箱数"], axis=1, inplace=True)
+            output_data.insert(index + 1, "建议调整数量", output_data.pop("suggest_qty"))
+            output_data.insert(index + 2, "建议调整箱数", output_data.pop("suggest_qty_in_cs"))
+            if "实际采纳数量" in output_data.columns.tolist():
+                output_data = output_data.rename(columns={"实际采纳数量": "实际采纳数量_temp"})
+                output_data.insert(index + 3, "实际采纳数量", output_data.pop("实际采纳数量_temp"))
             else:
-                source = source.rstrip("_竖版")
-                index = output_data.columns.tolist().index("采购需求数量*")
-                if "建议调整数量" in output_data.columns.tolist():
-                    output_data.drop(["建议调整数量"], axis=1, inplace=True)
-                    output_data.drop(["建议调整箱数"], axis=1, inplace=True)
-                output_data.insert(index + 1, "建议调整数量", output_data.pop("suggest_qty"))
-                output_data.insert(index + 2, "建议调整箱数", output_data.pop("suggest_qty_in_cs"))
-                if "实际采纳数量" in output_data.columns.tolist():
-                    output_data = output_data.rename(columns={"实际采纳数量": "实际采纳数量_temp"})
-                    output_data.insert(index + 3, "实际采纳数量", output_data.pop("实际采纳数量_temp"))
-                else:
-                    output_data.insert(index + 3, "实际采纳数量", np.nan)
-                city_col_name = [column for column in column_dict[source] if "配送中心" in column][0]
-                output_data = output_data.rename(columns={"京东码": "sku*", "配送中心*(格式：北京,上海,广州)": city_col_name})
-                column_list = output_data.columns.tolist()
-                keep_column_list = column_dict[source] + ["建议调整数量", "建议调整箱数", "实际采纳数量"]
-                drop_column_list = [column for column in column_list if column not in keep_column_list]
-                output_data.drop(drop_column_list, axis=1, inplace=True)
+                output_data.insert(index + 3, "实际采纳数量", np.nan)
+            city_col_name = [column for column in column_dict[source] if "配送中心" in column][0]
+            output_data = output_data.rename(columns={"京东码": "sku*", "配送中心*(格式：北京,上海,广州)": city_col_name})
+            column_list = output_data.columns.tolist()
+            keep_column_list = column_dict[source] + ["建议调整数量", "建议调整箱数", "实际采纳数量"]
+            drop_column_list = [column for column in column_list if column not in keep_column_list]
+            output_data.drop(drop_column_list, axis=1, inplace=True)
 
             output = BytesIO()
             if source.endswith(".xlsx"):
@@ -987,4 +954,3 @@ if exist_order_flag == "Y":
             else:
                 source = source.rstrip("_竖版")
             st.warning("**Warning:**" + "There is no order data within the testing scope in the file " + source)
-          
