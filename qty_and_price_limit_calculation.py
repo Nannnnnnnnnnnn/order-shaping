@@ -521,7 +521,7 @@ if exist_order_flag == "Y":
             base_slog = "0%"
 
         saving = (base_unit_cost - unit_cost) * pt
-        saving_percent = (base_unit_cost - unit_cost) * base_unit_cost
+        saving_percent = (base_unit_cost - unit_cost) / base_unit_cost
         filler_qty = np.array([round(qty) for qty in filler_qty])
         qty_changed = np.sum(filler_qty)
         abs_qty_changed = np.sum(np.abs(filler_qty))
