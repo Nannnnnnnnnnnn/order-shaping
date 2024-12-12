@@ -80,9 +80,10 @@ if len(uploaded_files) > 0:
         data_split = pd.read_excel(uploaded_file)
         if True in data_split.columns.str.contains("POA回告数量"):
             original_ao_order_data_split = data_split.astype({"Ship to编码": str, "宝洁八位码": str})
-            original_ao_order_data_split = original_ao_order_data_split.rename(columns={"Ship to编码": "shipto", "宝洁八位码": "material_num", "POA回告数量（箱数）": "CS"})
+            original_ao_order_data_split = original_ao_order_data_split.rename(columns={"Ship to编码": "shipto", "宝洁八位码": "material_num", "POA回告数量（箱数）": "CS", "POA回告数量（件数）": "IT"})
             original_ao_order_data_split = pd.merge(original_ao_order_data_split, sku_master.loc[:, ["material_num", "category", "volume_cube", "weight_ton"]], how="left", on="material_num")
-            original_ao_order_data_split = pd.merge(original_ao_order_data_split , sku_price_data.loc[:, ["宝洁码", "仓报价", "箱规"]], how="left", left_on="material_num", right_on="宝洁码")
+            original_ao_order_data_split = pd.merge(original_ao_order_data_split , sku_price_data.loc[:, ["宝洁码", "仓报价"]], how="left", left_on="material_num", right_on="宝洁码")
+            original_ao_order_data_split["箱规"] = original_ao_order_data_split["IT"] / original_ao_order_data_split["CS"]
             original_ao_order_data_split["仓报价"] = original_ao_order_data_split["仓报价"] * original_ao_order_data_split["箱规"]
             original_ao_order_data = pd.concat([original_ao_order_data, original_ao_order_data_split])
         else:
@@ -91,6 +92,7 @@ if len(uploaded_files) > 0:
             city_col_name = list(data_split.columns[data_split.columns.str.contains("配送中心")])[0]
             data_split["sku*"] = data_split["sku*"].map("{:.0f}".format)
             original_order_data_split = data_split.astype({"sku*": str, city_col_name: str, "补货前周转天数": float, "补货后周转天数": float, "正负可调整周转天数": float})
+            
             order_data_split = original_order_data_split.rename(columns={"sku*": "京东码", city_col_name: "配送中心*(格式：北京,上海,广州)"})
             order_data_split["Source"] = uploaded_file.name + "_竖版"
             if True in order_data_split.columns.str.contains("实际采纳数量"):
@@ -904,8 +906,8 @@ if exist_order_flag == "Y":
                             final_qty.append(total_qty - current_sum)
                     selected_order_data.loc[(selected_order_data["material_num"] == material_num) & (selected_order_data["shipto"] == shipto), "suggest_qty"] = final_qty
 
-        selected_order_data["suggest_qty_in_cs"] = np.ceil(selected_order_data["suggest_qty"])
-        selected_order_data["suggest_qty"] = selected_order_data["suggest_qty"] * selected_order_data["箱规"]
+        selected_order_data["suggest_qty_in_cs"] = np.round(selected_order_data["suggest_qty"])
+        selected_order_data["suggest_qty"] = np.round(selected_order_data["suggest_qty"] * selected_order_data["箱规"])
 
     for source in upload_source_list:
         if source in download_source_list:
@@ -955,3 +957,4 @@ if exist_order_flag == "Y":
             else:
                 source = source.rstrip("_竖版")
             st.warning("**Warning:**" + "There is no order data within the testing scope in the file " + source)
+            
