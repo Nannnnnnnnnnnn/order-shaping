@@ -457,6 +457,8 @@ if exist_order_flag == "Y":
     label = 0
     for shipto in np.array(selected_order_data["shipto"].unique()):
         order_data = selected_order_data[selected_order_data["shipto"] == shipto]
+        by_category_result = order_data.groupby(by=["category"])[["CS"]].sum()
+        by_category_result = by_category_result.rename(columns={"CS": "Before Shaping CS (#)"})
         if len(original_ao_order_data) > 0:
             ao_order_data = selected_ao_order_data[selected_ao_order_data["shipto"] == shipto]
             if len(ao_order_data) > 0:
@@ -530,6 +532,12 @@ if exist_order_flag == "Y":
         order_qty = initial_order_qty + qty_changed
         qty_changed_percent = qty_changed / initial_order_qty
         abs_qty_changed_percent = abs_qty_changed / initial_order_qty
+        by_category_filler_qty = pd.DataFrame({"category": category_list, "After Shaping CS (#)": filler_qty})
+        by_category_filler_qty = by_category_filler_qty.groupby(by=["category"])[["After Shaping CS (#)"]].sum()
+        by_category_result = pd.merge(by_category_result, by_category_filler_qty, how="left", on="category")
+        by_category_result["After Shaping CS (#)"] = by_category_result["Before Shaping CS (#)"] + by_category_result["After Shaping CS (#)"]
+        if adopt_calculation_flag != "Y":
+            by_category_result = by_category_result.reset_index().rename(columns={"category": "Category"})
 
         truck_selected = ""
         for i in range(len(truck_qty)):
@@ -549,6 +557,12 @@ if exist_order_flag == "Y":
             slog = "0%"
 
         if adopt_calculation_flag == "Y":
+            by_category_adopt_filler_qty = pd.DataFrame(
+                {"category": order_data["category"], "Adopted Shaping CS (#)": order_data["adopt_qty"] / order_data["箱规"]})
+            by_category_adopt_filler_qty = by_category_adopt_filler_qty.groupby(by=["category"])[["Adopted Shaping CS (#)"]].sum()
+            by_category_result = pd.merge(by_category_result, by_category_adopt_filler_qty, how="left", on="category")
+            by_category_result = by_category_result.reset_index().rename(columns={"category": "Category", "After Shaping CS (#)": "Proposed Shaping CS (#)"})
+
             qty = order_data["adopt_qty"] / order_data["箱规"]
             weight = order_data["weight_ton"] * qty
             volume = order_data["volume_cube"] * qty
@@ -572,8 +586,6 @@ if exist_order_flag == "Y":
             adopt_material_changed = len(
                 [qty for qty in adopt_filler_qty if qty is not None and qty != "" and qty != 0])
             adopt_material_changed_percent = adopt_material_changed / material_total
-            # st.write(adopt_material_changed)
-            # st.write(qty)
 
             truck_capacity_weight = np.array(truck_data["Weight Capacity"])
             truck_capacity_volume = np.array(truck_data["Max Load Volume"])
@@ -877,6 +889,92 @@ if exist_order_flag == "Y":
                 theme="alpine",
                 custom_css=custom_css
             )
+
+            by_category_result_grid_options = {
+                "columnDefs": [
+                    {
+                        "headerName": "Category",
+                        "field": "Category",
+                        "filter": "agTextColumnFilter",
+                        # "suppressSizeToFit": True,
+                        "cellStyle": {
+                            "text-align": "center"
+                        }
+                    },
+                    {
+                        "headerName": "Before Shaping CS (#)",
+                        "field": "Before Shaping CS (#)",
+                        "filter": "agTextColumnFilter",
+                        # "suppressSizeToFit": True,
+                        "cellStyle": {
+                            "text-align": "center"
+                        }
+                    },
+                    {
+                        "headerName": "After Shaping CS (#)",
+                        "field": "After Shaping CS (#)",
+                        "filter": "agTextColumnFilter",
+                        # "suppressSizeToFit": True,
+                        "cellStyle": {
+                            "text-align": "center"
+                        }
+                    }
+                ],
+                "enableRangeSelection": True
+            }
+
+            if adopt_calculation_flag == "Y":
+                by_category_result_grid_options = {
+                    "columnDefs": [
+                        {
+                            "headerName": "Category",
+                            "field": "Category",
+                            "filter": "agTextColumnFilter",
+                            # "suppressSizeToFit": True,
+                            "cellStyle": {
+                                "text-align": "center"
+                            }
+                        },
+                        {
+                            "headerName": "Before Shaping CS (#)",
+                            "field": "Before Shaping CS (#)",
+                            "filter": "agTextColumnFilter",
+                            # "suppressSizeToFit": True,
+                            "cellStyle": {
+                                "text-align": "center"
+                            }
+                        },
+                        {
+                            "headerName": "Proposed Shaping CS (#)",
+                            "field": "Proposed Shaping CS (#)",
+                            "filter": "agTextColumnFilter",
+                            # "suppressSizeToFit": True,
+                            "cellStyle": {
+                                "text-align": "center"
+                            }
+                        },
+                        {
+                            "headerName": "Adopted Shaping CS (#)",
+                            "field": "Adopted Shaping CS (#)",
+                            "filter": "agTextColumnFilter",
+                            # "suppressSizeToFit": True,
+                            "cellStyle": {
+                                "text-align": "center"
+                            }
+                        }
+                    ],
+                    "enableRangeSelection": True
+                }
+
+            st.info("By Category Result")
+            AgGrid(
+                by_category_result,
+                gridOptions=by_category_result_grid_options,
+                columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
+                fit_columns_on_grid_load=True,
+                theme="alpine",
+                custom_css=custom_css
+            )
         label += 1
 
     st.divider()
@@ -957,4 +1055,3 @@ if exist_order_flag == "Y":
             else:
                 source = source.rstrip("_竖版")
             st.warning("**Warning:**" + "There is no order data within the testing scope in the file " + source)
-            
