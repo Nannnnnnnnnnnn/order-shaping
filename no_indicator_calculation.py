@@ -17,7 +17,7 @@ st.divider()
 
 # Read Master Data
 sharepointUsername = "wang.n.22@pg.com"
-sharepointPassword = "POIUytrEWQ#2339"
+sharepointPassword = ""
 sharepointSite = "https://pgone.sharepoint.com/sites/GCInnovationandCapabilityTeam"
 website = "https://pgone.sharepoint.com"
 
